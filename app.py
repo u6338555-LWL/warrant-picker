@@ -12,11 +12,11 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 st.set_page_config(page_title="專屬權證篩選系統", page_icon="📈", layout="wide")
 
-# 1. 預設標準量化策略參數 (買價預設改為 0.0 ~ 2.0)
+# 1. 預設標準量化策略參數
 DEFAULT_CONFIG = {
     "stock_code": "2330",
     "min_days": 150,
-    "moneyness_range": (-10.0, 0.0),
+    "moneyness_range": (-10.0, 30.0),
     "price_range": (0.0, 2.0),
     "max_spread": 5.0,
     "max_iv_change": 10.0,
@@ -37,15 +37,14 @@ def reset_defaults():
         st.session_state[key] = val
     st.toast("✅ 已還原為標準預設條件！", icon="🔄")
 
-# 2. 修正價內外解析與格式化（確保正數/內盤正確標示為內）
-def parse_moneyness(val):
+# 2. 提取價內外數值（用於滑桿過濾），並保留原始字串供顯示
+def parse_moneyness_for_filter(val):
     s = str(val).strip()
     if not s or s == "nan" or s == "--" or s == "-":
-        return 0.0, "0.00%"
+        return 0.0
     
-    has_nei = "內" in s
-    has_wai = "外" in s
-    is_negative = "-" in s
+    # 若含有「外」字或負號，視為負數（價外）；含「內」或正數視為正數（價內）
+    is_wai = "外" in s or ("-" in s and "內" not in s)
     
     clean_num = re.sub(r"[^\d.]", "", s)
     try:
@@ -53,18 +52,10 @@ def parse_moneyness(val):
     except:
         num = 0.0
         
-    if num == 0.0:
-        return 0.0, "0.00%"
-        
-    # 判斷邏輯：若帶有「外」或明確負號（且無「內」），視為價外；其餘正數或帶「內」視為價內
-    if has_wai or (is_negative and not has_nei):
-        val_float = -abs(num)
-        text_str = f"外{abs(num):.2f}%"
+    if is_wai:
+        return -abs(num)
     else:
-        val_float = abs(num)
-        text_str = f"內{abs(num):.2f}%"
-            
-    return val_float, text_str
+        return abs(num)
 
 # 3. 資料正規化與欄位清洗
 def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
@@ -91,7 +82,7 @@ def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
     if "權證名稱" not in df.columns:
         df["權證名稱"] = ""
 
-    # 精準計算剩餘天數：支援到期日字串解析與現成剩餘天數欄位
+    # 精準計算剩餘天數：到期日減去今日
     today = date.today()
     if "到期日_raw" in df.columns:
         def calc_days(d_str):
@@ -129,7 +120,7 @@ def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
         else:
             df[col] = 0.0
 
-    # 處理價內外
+    # 處理價內外：直接保留原始網頁字串，並產生計算用數值
     raw_col = "價內外_raw" if "價內外_raw" in df.columns else None
     if not raw_col:
         for c in df.columns:
@@ -138,12 +129,11 @@ def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
                 break
 
     if raw_col:
-        parsed_results = df[raw_col].apply(parse_moneyness)
-        df["價內外_數值"] = [r[0] for r in parsed_results]
-        df["價內外（％）"] = [r[1] for r in parsed_results]
+        df["價內外（％）"] = df[raw_col].astype(str).str.strip()
+        df["價內外_數值"] = df[raw_col].apply(parse_moneyness_for_filter)
     else:
-        df["價內外_數值"] = 0.0
         df["價內外（％）"] = "0.00%"
+        df["價內外_數值"] = 0.0
 
     # 計算價差比 (%) = |賣價 - 買價| / 賣價 * 100
     valid_mask = (df["賣價"] > 0) & (df["買價"] > 0)
@@ -206,8 +196,6 @@ stock_code = st.sidebar.text_input("標的股票代碼", key="stock_code")
 min_days = st.sidebar.number_input("剩餘天數 ≥ (天)", min_value=10, max_value=500, key="min_days")
 
 moneyness_range = st.sidebar.slider("價內外 % 範圍", -30.0, 30.0, key="moneyness_range", step=0.5)
-
-# 權證買價範圍預設 0 ~ 2，可選範圍 0 ~ 20
 price_range = st.sidebar.slider("權證買價範圍 (元)", 0.0, 20.0, key="price_range", step=0.1)
 
 max_spread = st.sidebar.slider("價差比 ≤ (%)", 0.0, 50.0, key="max_spread", step=0.5)
