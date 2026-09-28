@@ -123,10 +123,10 @@ return df
 # 4. 資料擷取模組
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_warrants(stock_code: str):
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Referer": "https://histock.tw/",
-    }
+headers = {
+    "User-Agent": "Mozilla/5.0",
+    "Referer": "https://histock.tw/"
+}
     df = None
     source_used = "HiStock 財經數據源"
     status_code = 200
