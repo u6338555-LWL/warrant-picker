@@ -64,10 +64,14 @@ def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
         "權證代碼": "代號",
         "權證": "權證名稱",
         "名稱": "權證名稱",
+        "權證簡稱": "權證名稱",
         "最新價": "賣價",
         "市價": "賣價",
+        "成交價": "賣價",
         "委賣價": "賣價",
+        "委賣": "賣價",
         "委買價": "買價",
+        "委買": "買價",
         "剩餘天": "剩餘天數",
         "剩餘交易日": "剩餘天數",
         "價內外": "價內外（％）",
@@ -75,19 +79,29 @@ def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
         "隱含波動率": "即時委賣 IV",
         "委賣IV": "即時委賣 IV",
         "歷史IV": "昨日委賣 IV",
+        "差槓比(%)": "差槓比",
+        "有效槓桿": "實質槓桿",
+        "槓桿比率": "實質槓桿",
+        "槓桿": "實質槓桿",
     }
     df.rename(columns=col_map, inplace=True)
+
+    # 確保基本文字欄位存在
+    if "代號" not in df.columns:
+        df["代號"] = ""
+    if "權證名稱" not in df.columns:
+        df["權證名稱"] = ""
 
     # 處理價內外數值
     for col in ["價內外（％）", "價內外"]:
         if col in df.columns:
             df["價內外_數值"] = df[col].apply(parse_moneyness)
             break
-    if "價內外_數值" not in df.columns and "價內外" in df.columns:
-        df["價內外_數值"] = df["價內外"].apply(parse_moneyness)
+    if "價內外_數值" not in df.columns:
+        df["價內外_數值"] = 0.0
 
     # 清理並轉型數值欄位
-    num_cols = ["賣價", "買價", "即時委賣 IV", "昨日委賣 IV", "價差比", "差槓比", "剩餘天數"]
+    num_cols = ["賣價", "買價", "即時委賣 IV", "昨日委賣 IV", "價差比", "差槓比", "實質槓桿", "剩餘天數"]
     for col in num_cols:
         if col in df.columns:
             df[col] = pd.to_numeric(
@@ -95,15 +109,37 @@ def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
                 errors="coerce",
             )
 
-    # 若資料源無『價差比』，自動根據買賣價計算
-    if ("價差比" not in df.columns or df["價差比"].isna().all()) and ("賣價" in df.columns and "買價" in df.columns):
-        df["價差比"] = ((df["賣價"] - df["買價"]).abs() / df["賣價"]) * 100
+    # 確保買賣價欄位存在
+    if "賣價" not in df.columns:
+        df["賣價"] = 0.0
+    if "買價" not in df.columns:
+        df["買價"] = 0.0
 
-    # 計算 IV 相對變動率（顯示名稱統一為：相對變動率）
+    # 1. 計算/整理『價差比』: (賣價 - 買價) / 賣價 * 100
+    if "價差比" not in df.columns or df["價差比"].isna().all():
+        df["價差比"] = ((df["賣價"] - df["買價"]).abs() / df["賣價"] * 100).round(2)
+    else:
+        df["價差比"] = df["價差比"].round(2)
+
+    # 2. 計算/整理『差槓比』: 價差比 / 實質槓桿
+    if "差槓比" not in df.columns or df["差槓比"].isna().all():
+        if "實質槓桿" in df.columns and not df["實質槓桿"].isna().all():
+            df["差槓比"] = (df["價差比"] / df["實質槓桿"].replace(0, pd.NA)).round(2)
+        else:
+            df["差槓比"] = 0.0
+    else:
+        df["差槓比"] = df["差槓比"].round(2)
+
+    # 3. 計算『相對變動率』(IV 相對變動率)
     if "即時委賣 IV" in df.columns and "昨日委賣 IV" in df.columns:
-        df["相對變動率"] = ((df["即時委賣 IV"] - df["昨日委賣 IV"]).abs() / df["昨日委賣 IV"]) * 100
+        df["相對變動率"] = (((df["即時委賣 IV"] - df["昨日委賣 IV"]).abs() / df["昨日委賣 IV"]) * 100).round(2)
     else:
         df["相對變動率"] = 0.0
+
+    # 填補 NaN 確保呈現正常
+    df["價差比"] = df["價差比"].fillna(0.0)
+    df["差槓比"] = df["差槓比"].fillna(0.0)
+    df["相對變動率"] = df["相對變動率"].fillna(0.0)
 
     return df
 
@@ -214,8 +250,8 @@ try:
             if "賣價" in df.columns else True
         )
         cond_spread = df["價差比"] <= max_spread if "價差比" in df.columns else True
-        cond_chagang = df["差槓比"] <= max_chagang if "差槓比" in df.columns else True
-        cond_iv = df["相對變動率"] <= max_iv_change if "相對變動率" in df.columns else True
+        cond_chagang = (df["差槓比"] <= max_chagang) if (df["差槓比"] > 0).any() else True
+        cond_iv = (df["相對變動率"] <= max_iv_change) if (df["相對變動率"] > 0).any() else True
 
         filtered_df = df[cond_days & cond_money & cond_price & cond_spread & cond_chagang & cond_iv].copy()
         
@@ -228,10 +264,9 @@ try:
         display_cols = [
             "代號", "權證名稱", "買價", "賣價", "相對變動率", "價差比", "差槓比"
         ]
-        existing_cols = [c for c in display_cols if c in filtered_df.columns]
 
         st.dataframe(
-            filtered_df[existing_cols] if existing_cols else filtered_df,
+            filtered_df[display_cols],
             use_container_width=True,
             hide_index=True,
         )
