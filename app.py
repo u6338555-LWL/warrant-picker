@@ -12,11 +12,11 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 st.set_page_config(page_title="專屬權證篩選系統", page_icon="📈", layout="wide")
 
-# 1. 預設標準量化策略參數
+# 1. 預設標準量化策略參數（價內外範圍復原為 -10.0 到 0.0）
 DEFAULT_CONFIG = {
     "stock_code": "2330",
     "min_days": 150,
-    "moneyness_range": (-35.0, 35.0), # 擴大預設範圍以涵蓋深價內權證
+    "moneyness_range": (-10.0, 0.0),
     "price_range": (0.8, 2.0),
     "max_spread": 1.5,
     "max_iv_change": 1.0,
@@ -37,15 +37,16 @@ def reset_defaults():
         st.session_state[key] = val
     st.toast("✅ 已還原為標準預設條件！", icon="🔄")
 
-# 2. 精準價內外解析與格式化函數
+# 2. 精準價內外解析與格式化函數（修正正數為內、負數為外）
 def parse_moneyness(val):
     s = str(val).strip()
     if not s or s == "nan" or s == "--":
         return 0.0, "0.00%"
     
-    # 明確判斷是否為「內」或「外」
-    is_in = "內" in s
-    is_out = "外" in s or ("-" in s and not is_in)
+    # 檢查是否明確標示「外」或負號
+    has_wai = "外" in s
+    has_nei = "內" in s
+    is_negative = "-" in s
     
     # 提取純數字
     clean_num = re.sub(r"[^\d.]", "", s)
@@ -54,20 +55,17 @@ def parse_moneyness(val):
     except:
         num = 0.0
         
-    if is_in:
-        val_float = abs(num)
-        text_str = f"內{abs(num):.2f}%"
-    elif is_out:
+    if num == 0.0:
+        return 0.0, "0.00%"
+        
+    # 邏輯判斷：若帶有「外」或負號（且無明確「內」），視為價外
+    if has_wai or (is_negative and not has_nei):
         val_float = -abs(num)
         text_str = f"外{abs(num):.2f}%"
     else:
-        # 預設無字元時若大於 0 視為內盤
-        if num > 0:
-            val_float = num
-            text_str = f"內{num:.2f}%"
-        else:
-            val_float = 0.0
-            text_str = "0.00%"
+        # 其它情況（包含 HiStock 的正數如 26.68 或帶有「內」字），視為價內
+        val_float = abs(num)
+        text_str = f"內{abs(num):.2f}%"
             
     return val_float, text_str
 
@@ -282,7 +280,7 @@ st.title("📈 權證專屬量化篩選器")
 
 stock_code = st.sidebar.text_input("標的股票代碼", key="stock_code")
 min_days = st.sidebar.number_input("剩餘天數 ≥ (天)", min_value=30, max_value=500, key="min_days")
-moneyness_range = st.sidebar.slider("價內外 % 範圍", -35.0, 35.0, key="moneyness_range", step=0.5)
+moneyness_range = st.sidebar.slider("價內外 % 範圍", -30.0, 10.0, key="moneyness_range", step=0.5)
 price_range = st.sidebar.slider("權證賣價範圍 (元)", 0.1, 10.0, key="price_range", step=0.1)
 max_spread = st.sidebar.slider("價差比 ≤ (%)", 0.1, 5.0, key="max_spread", step=0.1)
 max_iv_change = st.sidebar.slider("相對變動率 ≤ (%)", 0.1, 5.0, key="max_iv_change", step=0.1)
