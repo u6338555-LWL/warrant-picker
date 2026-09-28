@@ -58,31 +58,56 @@ def parse_moneyness(val):
 def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     
-    # 欄位對照（對齊不同資料源的標頭）
+    # 完整欄位同義詞轉換 Mapping
     col_map = {
+        # 代號
         "權證代號": "代號",
         "權證代碼": "代號",
+        # 權證名稱
         "權證": "權證名稱",
         "名稱": "權證名稱",
         "權證簡稱": "權證名稱",
+        "標的": "權證名稱",
+        # 賣價 (市價 / 成交價 / 委賣價)
+        "最新": "賣價",
         "最新價": "賣價",
         "市價": "賣價",
         "成交價": "賣價",
+        "成交": "賣價",
         "委賣價": "賣價",
         "委賣": "賣價",
+        # 買價 (委買價)
         "委買價": "買價",
         "委買": "買價",
+        "買進": "買價",
+        # 剩餘天數
         "剩餘天": "剩餘天數",
         "剩餘交易日": "剩餘天數",
+        "到期天數": "剩餘天數",
+        # 價內外
         "價內外": "價內外（％）",
         "價內/外": "價內外（％）",
+        "價內外%": "價內外（％）",
+        # IV
         "隱含波動率": "即時委賣 IV",
         "委賣IV": "即時委賣 IV",
+        "委賣隱波": "即時委賣 IV",
         "歷史IV": "昨日委賣 IV",
-        "差槓比(%)": "差槓比",
+        "昨日隱波": "昨日委賣 IV",
+        # 槓桿
         "有效槓桿": "實質槓桿",
         "槓桿比率": "實質槓桿",
         "槓桿": "實質槓桿",
+        "實質槓桿(倍)": "實質槓桿",
+        "有效槓桿(倍)": "實質槓桿",
+        "槓桿(倍)": "實質槓桿",
+        # 價差比
+        "價差比(%)": "價差比",
+        "買賣價差比": "價差比",
+        "價差%": "價差比",
+        # 差槓比
+        "差槓比(%)": "差槓比",
+        "價差槓桿比": "差槓比",
     }
     df.rename(columns=col_map, inplace=True)
 
@@ -92,6 +117,21 @@ def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
     if "權證名稱" not in df.columns:
         df["權證名稱"] = ""
 
+    # 清理與轉型所有數值欄位
+    num_cols = ["賣價", "買價", "即時委賣 IV", "昨日委賣 IV", "價差比", "差槓比", "實質槓桿", "剩餘天數"]
+    for col in num_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(
+                df[col]
+                .astype(str)
+                .str.replace("%", "")
+                .str.replace("--", "")
+                .str.replace(",", "")
+                .str.replace("倍", "")
+                .str.strip(),
+                errors="coerce",
+            )
+
     # 處理價內外數值
     for col in ["價內外（％）", "價內外"]:
         if col in df.columns:
@@ -100,46 +140,47 @@ def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
     if "價內外_數值" not in df.columns:
         df["價內外_數值"] = 0.0
 
-    # 清理並轉型數值欄位
-    num_cols = ["賣價", "買價", "即時委賣 IV", "昨日委賣 IV", "價差比", "差槓比", "實質槓桿", "剩餘天數"]
-    for col in num_cols:
-        if col in df.columns:
-            df[col] = pd.to_numeric(
-                df[col].astype(str).str.replace("%", "").str.replace("--", "").str.replace(",", "").str.strip(),
-                errors="coerce",
-            )
-
-    # 確保買賣價欄位存在
+    # 補齊『賣價』與『買價』
     if "賣價" not in df.columns:
         df["賣價"] = 0.0
     if "買價" not in df.columns:
-        df["買價"] = 0.0
+        df["買價"] = df["賣價"]
 
-    # 1. 計算/整理『價差比』: (賣價 - 買價) / 賣價 * 100
-    if "價差比" not in df.columns or df["價差比"].isna().all():
-        df["價差比"] = ((df["賣價"] - df["買價"]).abs() / df["賣價"] * 100).round(2)
-    else:
-        df["價差比"] = df["價差比"].round(2)
+    # 1. 計算/整理『價差比 (%)』: (賣價 - 買價) / 賣價 * 100
+    need_calc_spread = "價差比" not in df.columns or (df["價差比"].isna() | (df["價差比"] == 0)).all()
+    if need_calc_spread:
+        valid_mask = (df["賣價"] > 0) & (df["買價"] > 0)
+        df["價差比"] = 0.0
+        df.loc[valid_mask, "價差比"] = (
+            (df.loc[valid_mask, "賣價"] - df.loc[valid_mask, "買價"]).abs()
+            / df.loc[valid_mask, "賣價"]
+            * 100
+        )
+    df["價差比"] = df["價差比"].fillna(0.0).round(2)
 
     # 2. 計算/整理『差槓比』: 價差比 / 實質槓桿
-    if "差槓比" not in df.columns or df["差槓比"].isna().all():
-        if "實質槓桿" in df.columns and not df["實質槓桿"].isna().all():
-            df["差槓比"] = (df["價差比"] / df["實質槓桿"].replace(0, pd.NA)).round(2)
+    need_calc_chagang = "差槓比" not in df.columns or (df["差槓比"].isna() | (df["差槓比"] == 0)).all()
+    if need_calc_chagang:
+        if "實質槓桿" in df.columns:
+            valid_lev = df["實質槓桿"].notna() & (df["實質槓桿"] > 0)
+            df["差槓比"] = 0.0
+            df.loc[valid_lev, "差槓比"] = df.loc[valid_lev, "價差比"] / df.loc[valid_lev, "實質槓桿"]
         else:
             df["差槓比"] = 0.0
-    else:
-        df["差槓比"] = df["差槓比"].round(2)
+    df["差槓比"] = df["差槓比"].fillna(0.0).round(2)
 
-    # 3. 計算『相對變動率』(IV 相對變動率)
+    # 3. 計算/整理『相對變動率』(IV 相對變動率)
     if "即時委賣 IV" in df.columns and "昨日委賣 IV" in df.columns:
-        df["相對變動率"] = (((df["即時委賣 IV"] - df["昨日委賣 IV"]).abs() / df["昨日委賣 IV"]) * 100).round(2)
+        valid_iv = df["即時委賣 IV"].notna() & df["昨日委賣 IV"].notna() & (df["昨日委賣 IV"] > 0)
+        df["相對變動率"] = 0.0
+        df.loc[valid_iv, "相對變動率"] = (
+            (df.loc[valid_iv, "即時委賣 IV"] - df.loc[valid_iv, "昨日委賣 IV"]).abs()
+            / df.loc[valid_iv, "昨日委賣 IV"]
+            * 100
+        )
     else:
         df["相對變動率"] = 0.0
-
-    # 填補 NaN 確保呈現正常
-    df["價差比"] = df["價差比"].fillna(0.0)
-    df["差槓比"] = df["差槓比"].fillna(0.0)
-    df["相對變動率"] = df["相對變動率"].fillna(0.0)
+    df["相對變動率"] = df["相對變動率"].fillna(0.0).round(2)
 
     return df
 
@@ -155,7 +196,7 @@ def fetch_from_histock(stock_code: str):
     if resp.status_code == 200:
         tables = pd.read_html(StringIO(resp.text))
         for t in tables:
-            if any(c in str(t.columns) for c in ["代號", "權證", "名稱", "最新價", "履約價"]):
+            if any(c in str(t.columns) for c in ["代號", "權證", "名稱", "最新", "最新價", "履約價"]):
                 return t
     return None
 
