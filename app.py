@@ -77,7 +77,7 @@ def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
     if "權證名稱" not in df.columns:
         df["權證名稱"] = ""
 
-    # 計算天數用以進行篩選條件判斷，同時保留到期日原文字串顯示
+    # 計算天數用以進行篩選條件判斷，同時保留到期日原文字串供參
     today = date.today()
     if "到期日_raw" in df.columns:
         df["到期日"] = df["到期日_raw"].astype(str).str.strip()
@@ -221,7 +221,7 @@ try:
         
         st.success(f"✅ 成功擷取數據！資料來源：**{source_used}**｜最後更新時間：{update_time}")
 
-        # 執行即時量化篩選（內部依舊用計算出的剩餘天數進行篩選）
+        # 執行即時量化篩選
         cond_days = df["剩餘天數"] >= min_days if "剩餘天數" in df.columns else True
         cond_money = (
             (df["價內外_數值"] >= moneyness_range[0]) & (df["價內外_數值"] <= moneyness_range[1])
@@ -259,10 +259,10 @@ try:
 
         st.markdown(f"### 🎯 符合策略之精選權證 (共 {len(filtered_df)} 檔)")
 
-        # 將原本的剩餘天數欄位換成「到期日」
+        # 將顯示欄位中的「到期日」改回「剩餘天數」
         display_cols = [
             "代號", "權證名稱", "買價", "賣價", "成交價",
-            "即時委賣 IV", "昨日委賣 IV", "價內外（％）", "到期日",
+            "即時委賣 IV", "昨日委賣 IV", "價內外（％）", "剩餘天數",
             "行使比例", "履約價", "即時槓桿", "價差比", "差槓比"
         ]
 
