@@ -12,7 +12,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 st.set_page_config(page_title="專屬權證篩選系統", page_icon="📈", layout="wide")
 
-# 1. 預設標準量化策略參數（價內外範圍復原為 -10.0 到 0.0）
+# 1. 預設標準量化策略參數
 DEFAULT_CONFIG = {
     "stock_code": "2330",
     "min_days": 150,
@@ -37,18 +37,16 @@ def reset_defaults():
         st.session_state[key] = val
     st.toast("✅ 已還原為標準預設條件！", icon="🔄")
 
-# 2. 精準價內外解析與格式化函數（修正正數為內、負數為外）
-def parse_moneyness(val):
+# 2. 精準價內外解析與格式化函數 (相容 CMoney 及 HiStock 正負號定義)
+def parse_moneyness(val, source="CMoney"):
     s = str(val).strip()
     if not s or s == "nan" or s == "--":
         return 0.0, "0.00%"
     
-    # 檢查是否明確標示「外」或負號
     has_wai = "外" in s
     has_nei = "內" in s
     is_negative = "-" in s
     
-    # 提取純數字
     clean_num = re.sub(r"[^\d.]", "", s)
     try:
         num = float(clean_num)
@@ -58,18 +56,26 @@ def parse_moneyness(val):
     if num == 0.0:
         return 0.0, "0.00%"
         
-    # 邏輯判斷：若帶有「外」或負號（且無明確「內」），視為價外
-    if has_wai or (is_negative and not has_nei):
-        val_float = -abs(num)
-        text_str = f"外{abs(num):.2f}%"
+    if source == "HiStock (自動備用源)":
+        # HiStock 定義：正數為價外，負數為價內
+        if is_negative:
+            val_float = abs(num)
+            text_str = f"內{abs(num):.2f}%"
+        else:
+            val_float = -abs(num)
+            text_str = f"外{abs(num):.2f}%"
     else:
-        # 其它情況（包含 HiStock 的正數如 26.68 或帶有「內」字），視為價內
-        val_float = abs(num)
-        text_str = f"內{abs(num):.2f}%"
+        # CMoney 定義：帶有「內」或正數為價內，帶有「外」或負數為價外
+        if has_wai or (is_negative and not has_nei):
+            val_float = -abs(num)
+            text_str = f"外{abs(num):.2f}%"
+        else:
+            val_float = abs(num)
+            text_str = f"內{abs(num):.2f}%"
             
     return val_float, text_str
 
-def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
+def normalize_and_clean_data(df: pd.DataFrame, source_name: str) -> pd.DataFrame:
     df = df.copy()
     
     # 完整欄位同義詞轉換 Mapping
@@ -97,6 +103,7 @@ def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
         "剩餘交易日": "剩餘天數",
         "到期天數": "剩餘天數",
         "剩餘日": "剩餘天數",
+        "天數": "剩餘天數",
         "價內外": "價內外_raw",
         "價內/外": "價內外_raw",
         "價內外%": "價內外_raw",
@@ -149,7 +156,7 @@ def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
 
     # 處理『價內外（％）』與『價內外_數值』
     if "價內外_raw" in df.columns:
-        parsed_results = df["價內外_raw"].apply(parse_moneyness)
+        parsed_results = df["價內外_raw"].apply(lambda x: parse_moneyness(x, source=source_name))
         df["價內外_數值"] = [r[0] for r in parsed_results]
         df["價內外（％）"] = [r[1] for r in parsed_results]
     else:
@@ -159,7 +166,7 @@ def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
                 found_col = c
                 break
         if found_col:
-            parsed_results = df[found_col].apply(parse_moneyness)
+            parsed_results = df[found_col].apply(lambda x: parse_moneyness(x, source=source_name))
             df["價內外_數值"] = [r[0] for r in parsed_results]
             df["價內外（％）"] = [r[1] for r in parsed_results]
         else:
@@ -170,6 +177,8 @@ def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
         df["賣價"] = 0.0
     if "買價" not in df.columns:
         df["買價"] = df["賣價"]
+    if "剩餘天數" not in df.columns:
+        df["剩餘天數"] = 999  # 若無此欄位預設給大數，避免整批被過濾
 
     # 1. 計算『價差比 (%)』
     need_calc_spread = "價差比" not in df.columns or (df["價差比"].isna() | (df["價差比"] == 0)).all()
@@ -280,7 +289,7 @@ st.title("📈 權證專屬量化篩選器")
 
 stock_code = st.sidebar.text_input("標的股票代碼", key="stock_code")
 min_days = st.sidebar.number_input("剩餘天數 ≥ (天)", min_value=30, max_value=500, key="min_days")
-moneyness_range = st.sidebar.slider("價內外 % 範圍", -30.0, 10.0, key="moneyness_range", step=0.5)
+moneyness_range = st.sidebar.slider("價內外 % 範圍", -10.0, 0.0, key="moneyness_range", step=0.5)
 price_range = st.sidebar.slider("權證賣價範圍 (元)", 0.1, 10.0, key="price_range", step=0.1)
 max_spread = st.sidebar.slider("價差比 ≤ (%)", 0.1, 5.0, key="max_spread", step=0.1)
 max_iv_change = st.sidebar.slider("相對變動率 ≤ (%)", 0.1, 5.0, key="max_iv_change", step=0.1)
@@ -297,7 +306,7 @@ try:
         with st.expander("🔍 點此查看伺服器回應除錯資訊"):
             st.code(raw_preview, language="html")
     else:
-        df = normalize_and_clean_data(df)
+        df = normalize_and_clean_data(df, source_used)
         
         st.success(f"✅ 成功擷取數據！資料來源：**{source_used}**｜最後更新時間：{update_time}")
 
@@ -322,8 +331,9 @@ try:
 
         st.markdown(f"### 🎯 符合策略之精選權證 (共 {len(filtered_df)} 檔)")
 
+        # 欄位順序：代號 權證名稱 買價 賣價 剩餘天數 價內外（％） 相對變動率 價差比 差槓比
         display_cols = [
-            "代號", "權證名稱", "買價", "賣價", "價內外（％）", "相對變動率", "價差比", "差槓比"
+            "代號", "權證名稱", "買價", "賣價", "剩餘天數", "價內外（％）", "相對變動率", "價差比", "差槓比"
         ]
 
         st.dataframe(
