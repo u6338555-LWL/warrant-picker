@@ -1,5 +1,6 @@
 from datetime import datetime
 from io import StringIO
+import re
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
@@ -13,7 +14,7 @@ st.set_page_config(page_title="專屬權證篩選系統", page_icon="📈", layo
 
 # 1. 預設標準量化策略參數
 DEFAULT_CONFIG = {
-    "stock_code": "2308",
+    "stock_code": "2330",
     "min_days": 150,
     "moneyness_range": (-10.0, 0.0),
     "price_range": (0.8, 2.0),
@@ -37,23 +38,34 @@ def reset_defaults():
         st.session_state[key] = val
     st.toast("✅ 已還原為標準預設條件！", icon="🔄")
 
-# 2. 欄位清洗與標準化處理
+# 2. 價內外解析與格式化函數
 def parse_moneyness(val):
     s = str(val).strip()
-    if "外" in s:
-        try:
-            return -float(s.replace("外", "").replace("%", "").replace(",", "").strip())
-        except:
-            return 0.0
-    elif "內" in s:
-        try:
-            return float(s.replace("內", "").replace("%", "").replace(",", "").strip())
-        except:
-            return 0.0
+    if not s or s == "nan" or s == "--":
+        return 0.0, "0.00%"
+    
+    # 判斷是否帶有 '外' 或 '內'
+    is_out = "外" in s or "-" in s
+    is_in = "內" in s
+    
+    # 提取純數字
+    clean_num = re.sub(r"[^\d.]", "", s)
     try:
-        return float(s.replace("%", "").replace(",", "").strip())
+        num = float(clean_num)
     except:
-        return 0.0
+        num = 0.0
+        
+    if is_out and num != 0:
+        val_float = -abs(num)
+        text_str = f"外{abs(num):.2f}%"
+    elif (is_in or (not is_out and num > 0)) and num != 0:
+        val_float = abs(num)
+        text_str = f"內{abs(num):.2f}%"
+    else:
+        val_float = 0.0
+        text_str = "0.00%"
+        
+    return val_float, text_str
 
 def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
@@ -85,9 +97,10 @@ def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
         "剩餘交易日": "剩餘天數",
         "到期天數": "剩餘天數",
         # 價內外
-        "價內外": "價內外（％）",
-        "價內/外": "價內外（％）",
-        "價內外%": "價內外（％）",
+        "價內外": "價內外_raw",
+        "價內/外": "價內外_raw",
+        "價內外%": "價內外_raw",
+        "價內外（％）": "價內外_raw",
         # IV
         "隱含波動率": "即時委賣 IV",
         "委賣IV": "即時委賣 IV",
@@ -117,7 +130,7 @@ def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
     if "權證名稱" not in df.columns:
         df["權證名稱"] = ""
 
-    # 清理與轉型所有數值欄位
+    # 清理與轉型數值欄位
     num_cols = ["賣價", "買價", "即時委賣 IV", "昨日委賣 IV", "價差比", "差槓比", "實質槓桿", "剩餘天數"]
     for col in num_cols:
         if col in df.columns:
@@ -132,13 +145,14 @@ def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
                 errors="coerce",
             )
 
-    # 處理價內外數值
-    for col in ["價內外（％）", "價內外"]:
-        if col in df.columns:
-            df["價內外_數值"] = df[col].apply(parse_moneyness)
-            break
-    if "價內外_數值" not in df.columns:
+    # 處理『價內外（％）』與『價內外_數值』
+    if "價內外_raw" in df.columns:
+        parsed_results = df["價內外_raw"].apply(parse_moneyness)
+        df["價內外_數值"] = [r[0] for r in parsed_results]
+        df["價內外（％）"] = [r[1] for r in parsed_results]
+    else:
         df["價內外_數值"] = 0.0
+        df["價內外（％）"] = "0.00%"
 
     # 補齊『賣價』與『買價』
     if "賣價" not in df.columns:
@@ -146,7 +160,7 @@ def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
     if "買價" not in df.columns:
         df["買價"] = df["賣價"]
 
-    # 1. 計算/整理『價差比 (%)』: (賣價 - 買價) / 賣價 * 100
+    # 1. 計算/整理『價差比 (%)』
     need_calc_spread = "價差比" not in df.columns or (df["價差比"].isna() | (df["價差比"] == 0)).all()
     if need_calc_spread:
         valid_mask = (df["賣價"] > 0) & (df["買價"] > 0)
@@ -158,7 +172,7 @@ def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
         )
     df["價差比"] = df["價差比"].fillna(0.0).round(2)
 
-    # 2. 計算/整理『差槓比』: 價差比 / 實質槓桿
+    # 2. 計算/整理『差槓比』
     need_calc_chagang = "差槓比" not in df.columns or (df["差槓比"].isna() | (df["差槓比"] == 0)).all()
     if need_calc_chagang:
         if "實質槓桿" in df.columns:
@@ -169,7 +183,7 @@ def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
             df["差槓比"] = 0.0
     df["差槓比"] = df["差槓比"].fillna(0.0).round(2)
 
-    # 3. 計算/整理『相對變動率』(IV 相對變動率)
+    # 3. 計算/整理『相對變動率』
     if "即時委賣 IV" in df.columns and "昨日委賣 IV" in df.columns:
         valid_iv = df["即時委賣 IV"].notna() & df["昨日委賣 IV"].notna() & (df["昨日委賣 IV"] > 0)
         df["相對變動率"] = 0.0
@@ -301,9 +315,9 @@ try:
 
         st.markdown(f"### 🎯 符合策略之精選權證 (共 {len(filtered_df)} 檔)")
 
-        # 指定欄位與順序：代號 權證名稱 買價 賣價 相對變動率 價差比 差槓比
+        # 指定欄位與順序：代號 權證名稱 買價 賣價 價內外（％） 相對變動率 價差比 差槓比
         display_cols = [
-            "代號", "權證名稱", "買價", "賣價", "相對變動率", "價差比", "差槓比"
+            "代號", "權證名稱", "買價", "賣價", "價內外（％）", "相對變動率", "價差比", "差槓比"
         ]
 
         st.dataframe(
