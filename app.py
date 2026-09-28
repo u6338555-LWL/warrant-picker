@@ -68,7 +68,16 @@ def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
         "昨日委賣IV": "昨日委賣 IV", "歷史IV": "昨日委賣 IV", "昨日隱波": "昨日委賣 IV", "昨日委賣 IV": "昨日委賣 IV",
         "行使比例": "行使比例", "執行比例": "行使比例",
         "履約價": "履約價", "履約價格": "履約價",
-        "即時槓桿": "即時槓桿", "有效槓桿": "即時槓桿", "實質槓桿": "即時槓桿", "槓桿比率": "即時槓桿",
+        "即時槓桿": "即時槓桿", "有效槓桿": "即時槓桿", "實質槓桿": "即時槓桿", "槓桿比率": "即時槓桿","剩餘天數": "剩餘天數",
+"剩餘 天數": "剩餘天數",
+ 
+"行使比例": "行使比例",
+"行使 比例": "行使比例",
+ 
+"實質槓桿": "即時槓桿",
+"實質 槓桿": "即時槓桿",
+ 
+"價內外程度": "價內外_raw",
     }
     df.rename(columns=col_map, inplace=True)
 
@@ -268,7 +277,31 @@ try:
             st.code(raw_preview, language="html")
     else:
         df = normalize_and_clean_data(df)
-        
+        with st.expander("DEBUG"):
+ 
+st.write("欄位名稱")
+ 
+st.write(df.columns.tolist())
+ 
+if "剩餘天數" in df.columns:
+ 
+st.write("剩餘天數")
+ 
+st.write(
+df[
+["代號","權證名稱","剩餘天數"]
+].head(20)
+)
+ 
+if "到期日" in df.columns:
+ 
+st.write("到期日")
+ 
+st.write(
+df[
+["代號","到期日"]
+].head(20)
+)
         # 顯示除錯資訊
         st.write("欄位名稱")
         st.write(df.columns.tolist())
