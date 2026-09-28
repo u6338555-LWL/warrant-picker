@@ -37,14 +37,18 @@ def reset_defaults():
         st.session_state[key] = val
     st.toast("✅ 已還原為標準預設條件！", icon="🔄")
 
-# 2. 提取價內外數值（用於滑桿過濾），並保留原始字串供顯示
-def parse_moneyness_for_filter(val):
+# 2. 處理價內外：移除價平、保留原意、數值精確到小數點後第一位
+def parse_moneyness(val):
     s = str(val).strip()
     if not s or s == "nan" or s == "--" or s == "-":
-        return 0.0
+        return 0.0, "0.0%"
     
-    # 若含有「外」字或負號，視為負數（價外）；含「內」或正數視為正數（價內）
+    # 移除「價平」字樣或轉為 0.0%
+    if "價平" in s or s == "0" or s == "0.0":
+        return 0.0, "0.0%"
+
     is_wai = "外" in s or ("-" in s and "內" not in s)
+    is_nei = "內" in s
     
     clean_num = re.sub(r"[^\d.]", "", s)
     try:
@@ -52,10 +56,17 @@ def parse_moneyness_for_filter(val):
     except:
         num = 0.0
         
+    if num == 0.0:
+        return 0.0, "0.0%"
+        
     if is_wai:
-        return -abs(num)
+        val_float = -abs(num)
+        text_str = f"外{abs(num):.1f}%"
     else:
-        return abs(num)
+        val_float = abs(num)
+        text_str = f"內{abs(num):.1f}%"
+            
+    return val_float, text_str
 
 # 3. 資料正規化與欄位清洗
 def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
@@ -120,7 +131,7 @@ def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
         else:
             df[col] = 0.0
 
-    # 處理價內外：直接保留原始網頁字串，並產生計算用數值
+    # 處理價內外：移除價平、數值限制到小數點第一位
     raw_col = "價內外_raw" if "價內外_raw" in df.columns else None
     if not raw_col:
         for c in df.columns:
@@ -129,11 +140,12 @@ def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
                 break
 
     if raw_col:
-        df["價內外（％）"] = df[raw_col].astype(str).str.strip()
-        df["價內外_數值"] = df[raw_col].apply(parse_moneyness_for_filter)
+        parsed_results = df[raw_col].apply(parse_moneyness)
+        df["價內外_數值"] = [r[0] for r in parsed_results]
+        df["價內外（％）"] = [r[1] for r in parsed_results]
     else:
-        df["價內外（％）"] = "0.00%"
         df["價內外_數值"] = 0.0
+        df["價內外（％）"] = "0.0%"
 
     # 計算價差比 (%) = |賣價 - 買價| / 賣價 * 100
     valid_mask = (df["賣價"] > 0) & (df["買價"] > 0)
