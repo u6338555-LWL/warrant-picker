@@ -57,6 +57,7 @@ def parse_moneyness(val, source="CMoney"):
         return 0.0, "0.00%"
         
     if source == "HiStock (自動備用源)":
+        # HiStock 定義：負數/帶「內」為價內，正數/無符號為價外
         if is_negative or has_nei:
             val_float = abs(num)
             text_str = f"內{abs(num):.2f}%"
@@ -64,6 +65,7 @@ def parse_moneyness(val, source="CMoney"):
             val_float = -abs(num)
             text_str = f"外{abs(num):.2f}%"
     else:
+        # CMoney 定義：帶「外」/負數為價外，帶「內」/正數為價內
         if has_wai or (is_negative and not has_nei):
             val_float = -abs(num)
             text_str = f"外{abs(num):.2f}%"
@@ -86,7 +88,7 @@ def normalize_and_clean_data(df: pd.DataFrame, source_name: str) -> pd.DataFrame
         "價內外": "價內外_raw", "價內/外": "價內外_raw", "價內外%": "價內外_raw", "價內外（％）": "價內外_raw", "價內外比": "價內外_raw",
         "隱含波動率": "即時委賣 IV", "委賣IV": "即時委賣 IV", "委賣隱波": "即時委賣 IV", "即時委賣IV": "即時委賣 IV", "IV": "即時委賣 IV", "隱波": "即時委賣 IV",
         "歷史IV": "昨日委賣 IV", "昨日隱波": "昨日委賣 IV", "昨日IV": "昨日委賣 IV", "前日IV": "昨日委賣 IV", "歷史隱波": "昨日委賣 IV",
-        "有效槓桿": "實質槓桿", "槓桿比率": "實質槓桿", "槓桿": "實質槓桿", "實質槓桿(倍)": "實質槓桿", "有效槓桿(倍)": "實質槓桿", "槓桿(倍)": "實質槓桿", "實質槓桿": "實質槓桿",
+        "有效槓桿": "即時槓桿", "槓桿比率": "即時槓桿", "槓桿": "即時槓桿", "實質槓桿(倍)": "即時槓桿", "有效槓桿(倍)": "即時槓桿", "槓桿(倍)": "即時槓桿", "實質槓桿": "即時槓桿", "即時槓桿": "即時槓桿",
         "價差比(%)": "價差比", "買賣價差比": "價差比", "價差%": "價差比", "價差比": "價差比",
         "差槓比(%)": "差槓比", "價差槓桿比": "差槓比", "差槓比": "差槓比",
     }
@@ -97,7 +99,7 @@ def normalize_and_clean_data(df: pd.DataFrame, source_name: str) -> pd.DataFrame
     if "權證名稱" not in df.columns:
         df["權證名稱"] = ""
 
-    num_cols = ["賣價", "買價", "即時委賣 IV", "昨日委賣 IV", "價差比", "差槓比", "實質槓桿", "剩餘天數"]
+    num_cols = ["賣價", "買價", "即時委賣 IV", "昨日委賣 IV", "價差比", "差槓比", "即時槓桿", "剩餘天數"]
     for col in num_cols:
         if col in df.columns:
             df[col] = pd.to_numeric(
@@ -111,26 +113,34 @@ def normalize_and_clean_data(df: pd.DataFrame, source_name: str) -> pd.DataFrame
                 errors="coerce",
             )
 
-    # 1. 計算剩餘天數
+    # 1. 精準計算『剩餘天數』
+    today = date.today()
+    if "到期日_raw" in df.columns:
+        def calc_days(d_str):
+            try:
+                d_str = str(d_str).strip().replace("-", "/").split(" ")[0]
+                target_date = datetime.strptime(d_str, "%Y/%m/%d").date()
+                return max(0, (target_date - today).days)
+            except:
+                return None
+        parsed_days = df["到期日_raw"].apply(calc_days)
+        df["剩餘天數"] = parsed_days.fillna(df.get("剩餘天數", 0))
+    
     if "剩餘天數" not in df.columns or df["剩餘天數"].isna().all():
-        if "到期日_raw" in df.columns:
-            today = date.today()
-            def calc_days(d_str):
-                try:
-                    d_str = str(d_str).strip().replace("-", "/").split(" ")[0]
-                    target_date = datetime.strptime(d_str, "%Y/%m/%d").date()
-                    return max(0, (target_date - today).days)
-                except:
-                    return 180
-            df["剩餘天數"] = df["到期日_raw"].apply(calc_days)
-        else:
-            df["剩餘天數"] = 180
+        df["剩餘天數"] = 0
     else:
-        df["剩餘天數"] = df["剩餘天數"].fillna(180).astype(int)
+        df["剩餘天數"] = df["剩餘天數"].fillna(0).astype(int)
 
-    # 2. 解析價內外
-    if "價內外_raw" in df.columns:
-        parsed_results = df["價內外_raw"].apply(lambda x: parse_moneyness(x, source=source_name))
+    # 2. 處理『價內外（％）』與『價內外_數值』
+    raw_col = "價內外_raw" if "價內外_raw" in df.columns else None
+    if not raw_col:
+        for c in df.columns:
+            if "價內" in str(c) or "價外" in str(c):
+                raw_col = c
+                break
+
+    if raw_col:
+        parsed_results = df[raw_col].apply(lambda x: parse_moneyness(x, source=source_name))
         df["價內外_數值"] = [r[0] for r in parsed_results]
         df["價內外（％）"] = [r[1] for r in parsed_results]
     else:
@@ -142,7 +152,7 @@ def normalize_and_clean_data(df: pd.DataFrame, source_name: str) -> pd.DataFrame
     if "買價" not in df.columns:
         df["買價"] = df["賣價"]
 
-    # 3. 計算價差比
+    # 3. 計算『價差比 (%)』
     need_calc_spread = "價差比" not in df.columns or (df["價差比"].isna() | (df["價差比"] == 0)).all()
     if need_calc_spread:
         valid_mask = (df["賣價"] > 0) & (df["買價"] > 0)
@@ -154,18 +164,16 @@ def normalize_and_clean_data(df: pd.DataFrame, source_name: str) -> pd.DataFrame
         )
     df["價差比"] = df["價差比"].fillna(0.0).round(2)
 
-    # 4. 計算差槓比
-    if "差槓比" not in df.columns or (df["差槓比"].isna() | (df["差槓比"] == 0)).all():
-        if "實質槓桿" in df.columns and not (df["實質槓桿"].isna() | (df["實質槓桿"] == 0)).all():
-            valid_lev = df["實質槓桿"].notna() & (df["實質槓桿"] > 0)
-            df["差槓比"] = 0.0
-            df.loc[valid_lev, "差槓比"] = df.loc[valid_lev, "價差比"] / df.loc[valid_lev, "實質槓桿"]
-        else:
-            estimated_leverage = df["賣價"].apply(lambda p: max(2.5, round(8.0 / (p + 0.5), 2)) if p > 0 else 3.0)
-            df["差槓比"] = (df["價差比"] / estimated_leverage).round(2)
-    df["差槓比"] = df["差槓比"].fillna(0.0).round(2)
+    # 4. 處理『即時槓桿』與『差槓比』: 差槓比 = 價差比 / 即時槓桿
+    if "即時槓桿" not in df.columns or df["即時槓桿"].isna().all() or (df["即時槓桿"] == 0).all():
+        # 若數據源無槓桿資料，依據賣價進行估算
+        df["即時槓桿"] = df["賣價"].apply(lambda p: max(1.5, round(6.5 / (p + 0.3), 2)) if p > 0 else 3.0)
+    df["即時槓桿"] = df["即時槓桿"].fillna(3.0).round(2)
 
-    # 5. 計算相對變動率
+    # 差槓比 = 價差比 / 即時槓桿
+    df["差槓比"] = (df["價差比"] / df["即時槓桿"].replace(0, pd.NA)).fillna(0.0).round(2)
+
+    # 5. 計算『相對變動率』(IV 相對變動率)
     if "即時委賣 IV" in df.columns and "昨日委賣 IV" in df.columns:
         valid_iv = df["即時委賣 IV"].notna() & df["昨日委賣 IV"].notna() & (df["昨日委賣 IV"] > 0)
         df["相對變動率"] = 0.0
@@ -274,7 +282,7 @@ try:
         
         st.success(f"✅ 成功擷取數據！資料來源：**{source_used}**｜最後更新時間：{update_time}")
 
-        # 執行彈性量化篩選
+        # 執行量化篩選
         cond_days = df["剩餘天數"] >= min_days if "剩餘天數" in df.columns else True
         cond_money = (
             (df["價內外_數值"] >= moneyness_range[0]) & (df["價內外_數值"] <= moneyness_range[1])
@@ -289,10 +297,9 @@ try:
 
         filtered_df = df[cond_days & cond_money & cond_price & cond_spread & cond_iv].copy()
         
-        # 若完全篩選不出資料，自動提示並放寬展示
         if filtered_df.empty:
-            st.warning("⚠️ 在目前嚴格條件下無符合權證，已為您自動放寬「剩餘天數」與「價差比」展示初步結果：")
-            filtered_df = df[cond_price].copy()
+            st.warning("⚠️ 在目前條件下無符合權證，已為您展延「剩餘天數」條件展示初步搜尋結果：")
+            filtered_df = df[cond_price & cond_spread].copy()
 
         # 依差槓比由小到大 (升冪) 排序
         if "差槓比" in filtered_df.columns:
@@ -300,8 +307,9 @@ try:
 
         st.markdown(f"### 🎯 符合策略之精選權證 (共 {len(filtered_df)} 檔)")
 
+        # 指定 9 欄欄位順序：代號 權證名稱 買價 賣價 剩餘天數 價內外（％） 相對變動率 即時槓桿 價差比 差槓比
         display_cols = [
-            "代號", "權證名稱", "買價", "賣價", "剩餘天數", "價內外（％）", "相對變動率", "價差比", "差槓比"
+            "代號", "權證名稱", "買價", "賣價", "剩餘天數", "價內外（％）", "相對變動率", "即時槓桿", "價差比", "差槓比"
         ]
 
         st.dataframe(
