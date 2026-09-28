@@ -73,21 +73,18 @@ def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
  "價內外程度": "價內外_raw",
     }
     df.rename(columns=col_map, inplace=True)
-
     if "代號" not in df.columns:
         df["代號"] = ""
     if "權證名稱" not in df.columns:
         df["權證名稱"] = ""
-
 # =====================================================
 # 欄位名稱先去除空格
 # =====================================================
- 
 df.columns = (
-df.columns
-.astype(str)
-.str.replace(" ", "", regex=False)
-.str.strip()
+    df.columns
+    .astype(str)
+    .str.replace(" ", "", regex=False)
+    .str.strip()
 )
  
 # =====================================================
