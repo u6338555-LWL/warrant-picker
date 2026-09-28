@@ -76,7 +76,7 @@ df.columns = (
     .str.replace(" ", "", regex=False)
     .str.strip()
 )
- 
+
 df.rename(columns=col_map, inplace=True)
     if "代號" not in df.columns:
         df["代號"] = ""
