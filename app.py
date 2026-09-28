@@ -77,29 +77,79 @@ def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
     if "權證名稱" not in df.columns:
         df["權證名稱"] = ""
 
-    # 計算天數用以進行篩選條件判斷，同時保留到期日原文字串供參
-    today = date.today()
-    if "到期日_raw" in df.columns:
-        df["到期日"] = df["到期日_raw"].astype(str).str.strip()
-        def calc_days(d_str):
-            try:
-                d_clean = str(d_str).strip().replace("-", "/").split(" ")[0]
-                for fmt in ("%Y/%m/%d", "%Y-%m-%d", "%y/%m/%d"):
-                    try:
-                        target_date = datetime.strptime(d_clean, fmt).date()
-                        return max(0, (target_date - today).days)
-                    except ValueError:
-                        continue
-                return 0
-            except:
-                return 0
-        df["剩餘天數"] = df["到期日_raw"].apply(calc_days)
-    elif "剩餘天數" in df.columns:
-        df["到期日"] = df["剩餘天數"].astype(str)
-        df["剩餘天數"] = pd.to_numeric(df["剩餘天數"].astype(str).str.replace(r"[^\d]", "", regex=True), errors="coerce").fillna(0).astype(int)
-    else:
-        df["到期日"] = "--"
-        df["剩餘天數"] = 0
+# =====================================================
+# 欄位名稱先去除空格
+# =====================================================
+ 
+df.columns = (
+df.columns
+.astype(str)
+.str.replace(" ", "", regex=False)
+.str.strip()
+)
+ 
+# =====================================================
+# 剩餘天數
+# 優先使用 HiStock 已提供資料
+# =====================================================
+ 
+today = date.today()
+ 
+if "剩餘天數" in df.columns:
+ 
+df["剩餘天數"] = pd.to_numeric(
+df["剩餘天數"]
+.astype(str)
+.str.extract(r"(\d+)")[0],
+errors="coerce"
+).fillna(0).astype(int)
+ 
+if "到期日_raw" in df.columns:
+df["到期日"] = df["到期日_raw"].astype(str)
+ 
+elif "到期日_raw" in df.columns:
+ 
+df["到期日"] = df["到期日_raw"].astype(str)
+ 
+def calc_days(d_str):
+ 
+d_str = str(d_str).strip()
+ 
+for fmt in [
+"%Y/%m/%d",
+"%Y-%m-%d",
+"%Y.%m.%d",
+"%Y%m%d",
+"%y/%m/%d"
+]:
+ 
+try:
+ 
+target = datetime.strptime(
+d_str,
+fmt
+).date()
+ 
+return max(
+0,
+(target - today).days
+)
+ 
+except:
+pass
+ 
+return 0
+ 
+df["剩餘天數"] = (
+df["到期日_raw"]
+.apply(calc_days)
+.astype(int)
+)
+ 
+else:
+ 
+df["到期日"] = "--"
+df["剩餘天數"] = 0
 
     # 數值清理
     num_cols = ["買價", "賣價", "成交價", "即時委賣 IV", "昨日委賣 IV", "剩餘天數", "行使比例", "履約價", "即時槓桿"]
