@@ -12,12 +12,12 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 st.set_page_config(page_title="專屬權證篩選系統", page_icon="📈", layout="wide")
 
-# 1. 預設標準量化策略參數
+# 1. 預設標準量化策略參數 (買價預設改為 0.0 ~ 2.0)
 DEFAULT_CONFIG = {
     "stock_code": "2330",
     "min_days": 150,
     "moneyness_range": (-10.0, 0.0),
-    "price_range": (0.0, 20.0),
+    "price_range": (0.0, 2.0),
     "max_spread": 5.0,
     "max_iv_change": 10.0,
 }
@@ -37,15 +37,15 @@ def reset_defaults():
         st.session_state[key] = val
     st.toast("✅ 已還原為標準預設條件！", icon="🔄")
 
-# 2. 修正價內外解析與格式化（確保正負號與文字完全相符）
+# 2. 修正價內外解析與格式化（確保正數/內盤正確標示為內）
 def parse_moneyness(val):
     s = str(val).strip()
     if not s or s == "nan" or s == "--" or s == "-":
         return 0.0, "0.00%"
     
-    # 判斷是否為外盤或負數
-    is_wai = "外" in s or ("-" in s and "內" not in s)
-    is_nei = "內" in s
+    has_nei = "內" in s
+    has_wai = "外" in s
+    is_negative = "-" in s
     
     clean_num = re.sub(r"[^\d.]", "", s)
     try:
@@ -56,7 +56,8 @@ def parse_moneyness(val):
     if num == 0.0:
         return 0.0, "0.00%"
         
-    if is_wai:
+    # 判斷邏輯：若帶有「外」或明確負號（且無「內」），視為價外；其餘正數或帶「內」視為價內
+    if has_wai or (is_negative and not has_nei):
         val_float = -abs(num)
         text_str = f"外{abs(num):.2f}%"
     else:
@@ -90,14 +91,19 @@ def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
     if "權證名稱" not in df.columns:
         df["權證名稱"] = ""
 
-    # 精準計算剩餘天數 (到期日減去今日)
+    # 精準計算剩餘天數：支援到期日字串解析與現成剩餘天數欄位
     today = date.today()
     if "到期日_raw" in df.columns:
         def calc_days(d_str):
             try:
                 d_str = str(d_str).strip().replace("-", "/").split(" ")[0]
-                target_date = datetime.strptime(d_str, "%Y/%m/%d").date()
-                return max(0, (target_date - today).days)
+                for fmt in ("%Y/%m/%d", "%Y-%m-%d", "%y/%m/%d"):
+                    try:
+                        target_date = datetime.strptime(d_str, fmt).date()
+                        return max(0, (target_date - today).days)
+                    except ValueError:
+                        continue
+                return 0
             except:
                 return 0
         df["剩餘天數"] = df["到期日_raw"].apply(calc_days)
@@ -193,16 +199,17 @@ def fetch_warrants(stock_code: str):
     fetch_time = datetime.now().strftime("%H:%M:%S")
     return df, status_code, raw_preview, fetch_time, source_used
 
-# 5. 主頁面與控制面板 (參數調整即時更新)
+# 5. 主頁面與控制面板
 st.title("📈 權證專屬量化篩選器")
 
 stock_code = st.sidebar.text_input("標的股票代碼", key="stock_code")
 min_days = st.sidebar.number_input("剩餘天數 ≥ (天)", min_value=10, max_value=500, key="min_days")
 
-# 價內外範圍預設 -10 ~ 0，可選範圍 -30 ~ 30
 moneyness_range = st.sidebar.slider("價內外 % 範圍", -30.0, 30.0, key="moneyness_range", step=0.5)
 
+# 權證買價範圍預設 0 ~ 2，可選範圍 0 ~ 20
 price_range = st.sidebar.slider("權證買價範圍 (元)", 0.0, 20.0, key="price_range", step=0.1)
+
 max_spread = st.sidebar.slider("價差比 ≤ (%)", 0.0, 50.0, key="max_spread", step=0.5)
 max_iv_change = st.sidebar.slider("相對變動率 ≤ (%)", 0.0, 50.0, key="max_iv_change", step=0.5)
 
@@ -260,7 +267,6 @@ try:
 
         st.markdown(f"### 🎯 符合策略之精選權證 (共 {len(filtered_df)} 檔)")
 
-        # 完整 14 欄原始網站對應欄位順序
         display_cols = [
             "代號", "權證名稱", "買價", "賣價", "成交價",
             "即時委賣 IV", "昨日委賣 IV", "價內外（％）", "剩餘天數",
