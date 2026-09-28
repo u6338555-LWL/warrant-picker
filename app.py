@@ -2,6 +2,10 @@ from datetime import datetime
 import pandas as pd
 import requests
 import streamlit as st
+import urllib3
+
+# 關閉不安全連線 (SSL) 的警告提示
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 st.set_page_config(
     page_title="專屬權證篩選系統", page_icon="📈", layout="wide"
@@ -45,7 +49,9 @@ def fetch_cmoney_warrants(stock_code: str):
             "Chrome/120.0.0.0 Safari/537.36"
         )
     }
-    resp = requests.get(url, headers=headers)
+
+    # verify=False 繞過 CMoney 的 SSL 憑證問題
+    resp = requests.get(url, headers=headers, verify=False)
     tables = pd.read_html(resp.text)
     df = tables[0]
 
@@ -60,15 +66,7 @@ def fetch_cmoney_warrants(stock_code: str):
     if "價內外（％）" in df.columns:
         df["價內外_數值"] = df["價內外（％）"].apply(parse_moneyness)
 
-    num_cols = [
-        "賣價",
-        "買價",
-        "即時委賣 IV",
-        "昨日委賣 IV",
-        "價差比",
-        "差槓比",
-        "剩餘天數",
-    ]
+    num_cols = ["賣價", "買價", "即時委賣 IV", "昨日委賣 IV", "價差比", "差槓比", "剩餘天數"]
     for col in num_cols:
         if col in df.columns:
             df[col] = pd.to_numeric(
@@ -135,8 +133,7 @@ try:
         df, update_time = fetch_cmoney_warrants(stock_code)
 
     st.caption(
-        f"⏱️ 資料最後更新時間：**{update_time}**（10"
-        " 分鐘內讀取記憶體快取，不重複發送請求）"
+        f"⏱️ 資料最後更新時間：**{update_time}**（10 分鐘內讀取記憶體快取，不重複發送請求）"
     )
 
     # 篩選條件
@@ -144,9 +141,7 @@ try:
     cond_money = (df["價內外_數值"] >= moneyness_range[0]) & (
         df["價內外_數值"] <= moneyness_range[1]
     )
-    cond_price = (df["賣價"] >= price_range[0]) & (
-        df["賣價"] <= price_range[1]
-    )
+    cond_price = (df["賣價"] >= price_range[0]) & (df["賣價"] <= price_range[1])
     cond_spread = df["價差比"] <= max_spread
     cond_chagang = df["差槓比"] <= max_chagang
     cond_iv = df["IV相對變動率"] < max_iv_change
@@ -183,6 +178,5 @@ try:
 
 except Exception as e:
     st.error(
-        "擷取或處理資料時發生錯誤，請確認股票代碼是否正確。"
-        f"詳細訊息: {e}"
+        f"擷取或處理資料時發生錯誤，請確認股票代碼是否正確。詳細訊息: {e}"
     )
