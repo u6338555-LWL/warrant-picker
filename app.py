@@ -12,20 +12,17 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 st.set_page_config(page_title="專屬權證篩選系統", page_icon="📈", layout="wide")
 
-# 1. 預設標準量化策略參數
+# 1. 統一管理預設參數與範圍
 DEFAULT_CONFIG = {
     "stock_code": "2330",
     "min_days": 150,
-    "moneyness_range": (-10.0, 30.0),
+    "moneyness_range": (-10.0, 0.0),  # 預設範圍 -10 ~ 0
     "price_range": (0.0, 2.0),
     "max_spread": 5.0,
     "max_iv_change": 10.0,
 }
 
 def init_state():
-    query_params = st.query_params
-    if "code" in query_params:
-        st.session_state["stock_code"] = query_params["code"]
     for key, val in DEFAULT_CONFIG.items():
         if key not in st.session_state:
             st.session_state[key] = val
@@ -43,12 +40,10 @@ def parse_moneyness(val):
     if not s or s == "nan" or s == "--" or s == "-":
         return 0.0, "0.0%"
     
-    # 移除「價平」字樣或轉為 0.0%
     if "價平" in s or s == "0" or s == "0.0":
         return 0.0, "0.0%"
 
     is_wai = "外" in s or ("-" in s and "內" not in s)
-    is_nei = "內" in s
     
     clean_num = re.sub(r"[^\d.]", "", s)
     try:
@@ -131,7 +126,7 @@ def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
         else:
             df[col] = 0.0
 
-    # 處理價內外：移除價平、數值限制到小數點第一位
+    # 處理價內外
     raw_col = "價內外_raw" if "價內外_raw" in df.columns else None
     if not raw_col:
         for c in df.columns:
@@ -207,9 +202,16 @@ st.title("📈 權證專屬量化篩選器")
 stock_code = st.sidebar.text_input("標的股票代碼", key="stock_code")
 min_days = st.sidebar.number_input("剩餘天數 ≥ (天)", min_value=10, max_value=500, key="min_days")
 
-moneyness_range = st.sidebar.slider("價內外 % 範圍", -30.0, 30.0, key="moneyness_range", step=0.5)
-price_range = st.sidebar.slider("權證買價範圍 (元)", 0.0, 20.0, key="price_range", step=0.1)
+# 確保滑桿的可選範圍為 -30 到 30，並讀取 session_state 預設值 (-10, 0)
+moneyness_range = st.sidebar.slider(
+    "價內外 % 範圍", 
+    min_value=-30.0, 
+    max_value=30.0, 
+    key="moneyness_range", 
+    step=0.5
+)
 
+price_range = st.sidebar.slider("權證買價範圍 (元)", 0.0, 20.0, key="price_range", step=0.1)
 max_spread = st.sidebar.slider("價差比 ≤ (%)", 0.0, 50.0, key="max_spread", step=0.5)
 max_iv_change = st.sidebar.slider("相對變動率 ≤ (%)", 0.0, 50.0, key="max_iv_change", step=0.5)
 
