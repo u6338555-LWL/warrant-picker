@@ -62,6 +62,8 @@ def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
     col_map = {
         "權證代號": "代號",
         "權證代碼": "代號",
+        "權證": "權證名稱",
+        "名稱": "權證名稱",
         "最新價": "賣價",
         "市價": "賣價",
         "委賣價": "賣價",
@@ -117,7 +119,6 @@ def fetch_from_histock(stock_code: str):
     if resp.status_code == 200:
         tables = pd.read_html(StringIO(resp.text))
         for t in tables:
-            # 判斷是否為權證表格
             if any(c in str(t.columns) for c in ["代號", "權證", "名稱", "最新價", "履約價"]):
                 return t
     return None
@@ -223,8 +224,9 @@ try:
 
         st.markdown(f"### 🎯 符合策略之精選權證 (共 {len(filtered_df)} 檔)")
 
+        # 指定欄位順序：代號 ➔ 權證名稱 ➔ 賣價...
         display_cols = [
-            "權證名稱", "代號", "賣價", "買價", "價內外（％）",
+            "代號", "權證名稱", "賣價", "買價", "價內外（％）",
             "剩餘天數", "價差比", "差槓比", "即時委賣 IV", "昨日委賣 IV", "IV相對變動率"
         ]
         existing_cols = [c for c in display_cols if c in filtered_df.columns]
