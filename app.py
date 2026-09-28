@@ -12,13 +12,13 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 st.set_page_config(page_title="專屬權證篩選系統", page_icon="📈", layout="wide")
 
-# 1. 預設標準量化策略參數
+# 1. 預設標準量化策略參數（符合最新設定）
 DEFAULT_CONFIG = {
     "stock_code": "2330",
     "min_days": 150,
     "moneyness_range": (-10.0, 0.0),
     "price_range": (0.8, 2.0),
-    "max_spread": 1.5,
+    "max_spread": 1.0,
     "max_iv_change": 1.0,
 }
 
@@ -37,7 +37,7 @@ def reset_defaults():
         st.session_state[key] = val
     st.toast("✅ 已還原為標準預設條件！", icon="🔄")
 
-# 2. 精準價內外解析與格式化函數 (相容 CMoney 及 HiStock 正負號定義)
+# 2. 精準價內外解析與格式化函數
 def parse_moneyness(val, source="CMoney"):
     s = str(val).strip()
     if not s or s == "nan" or s == "--":
@@ -78,7 +78,6 @@ def parse_moneyness(val, source="CMoney"):
 def normalize_and_clean_data(df: pd.DataFrame, source_name: str) -> pd.DataFrame:
     df = df.copy()
     
-    # 完整欄位同義詞轉換 Mapping
     col_map = {
         "權證代號": "代號",
         "權證代碼": "代號",
@@ -139,7 +138,6 @@ def normalize_and_clean_data(df: pd.DataFrame, source_name: str) -> pd.DataFrame
     if "權證名稱" not in df.columns:
         df["權證名稱"] = ""
 
-    # 清理與轉型數值欄位
     num_cols = ["賣價", "買價", "即時委賣 IV", "昨日委賣 IV", "價差比", "差槓比", "實質槓桿", "剩餘天數"]
     for col in num_cols:
         if col in df.columns:
@@ -154,7 +152,6 @@ def normalize_and_clean_data(df: pd.DataFrame, source_name: str) -> pd.DataFrame
                 errors="coerce",
             )
 
-    # 處理『價內外（％）』與『價內外_數值』
     if "價內外_raw" in df.columns:
         parsed_results = df["價內外_raw"].apply(lambda x: parse_moneyness(x, source=source_name))
         df["價內外_數值"] = [r[0] for r in parsed_results]
@@ -178,7 +175,7 @@ def normalize_and_clean_data(df: pd.DataFrame, source_name: str) -> pd.DataFrame
     if "買價" not in df.columns:
         df["買價"] = df["賣價"]
     if "剩餘天數" not in df.columns:
-        df["剩餘天數"] = 999  # 若無此欄位預設給大數，避免整批被過濾
+        df["剩餘天數"] = 999
 
     # 1. 計算『價差比 (%)』
     need_calc_spread = "價差比" not in df.columns or (df["價差比"].isna() | (df["價差比"] == 0)).all()
@@ -284,15 +281,22 @@ def fetch_warrants(stock_code: str):
     fetch_time = datetime.now().strftime("%H:%M:%S")
     return df, status_code, raw_preview, fetch_time, source_used
 
-# 5. 主頁面與控制面版
+# 5. 主頁面與控制面版（更新滑桿範圍與預設值）
 st.title("📈 權證專屬量化篩選器")
 
 stock_code = st.sidebar.text_input("標的股票代碼", key="stock_code")
 min_days = st.sidebar.number_input("剩餘天數 ≥ (天)", min_value=30, max_value=500, key="min_days")
-moneyness_range = st.sidebar.slider("價內外 % 範圍", -10.0, 0.0, key="moneyness_range", step=0.5)
+
+# 調整範圍設置為 -30% ~ 30%，預設維持 -10% ~ 0%
+moneyness_range = st.sidebar.slider("價內外 % 範圍", -30.0, 30.0, key="moneyness_range", step=0.5)
+
 price_range = st.sidebar.slider("權證賣價範圍 (元)", 0.1, 10.0, key="price_range", step=0.1)
-max_spread = st.sidebar.slider("價差比 ≤ (%)", 0.1, 5.0, key="max_spread", step=0.1)
-max_iv_change = st.sidebar.slider("相對變動率 ≤ (%)", 0.1, 5.0, key="max_iv_change", step=0.1)
+
+# 調整範圍設置為 0 ~ 20%，預設維持 1.0%
+max_spread = st.sidebar.slider("價差比 ≤ (%)", 0.0, 20.0, key="max_spread", step=0.1)
+
+# 調整範圍設置為 0 ~ 20%，預設維持 1.0%
+max_iv_change = st.sidebar.slider("相對變動率 ≤ (%)", 0.0, 20.0, key="max_iv_change", step=0.1)
 
 if st.sidebar.button("🔄 一鍵還原專屬預設", on_click=reset_defaults, type="primary", use_container_width=True):
     pass
@@ -331,7 +335,6 @@ try:
 
         st.markdown(f"### 🎯 符合策略之精選權證 (共 {len(filtered_df)} 檔)")
 
-        # 欄位順序：代號 權證名稱 買價 賣價 剩餘天數 價內外（％） 相對變動率 價差比 差槓比
         display_cols = [
             "代號", "權證名稱", "買價", "賣價", "剩餘天數", "價內外（％）", "相對變動率", "價差比", "差槓比"
         ]
