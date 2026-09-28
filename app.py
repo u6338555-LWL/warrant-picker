@@ -68,16 +68,18 @@ def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
         "昨日委賣IV": "昨日委賣 IV", "歷史IV": "昨日委賣 IV", "昨日隱波": "昨日委賣 IV",
         "行使比例": "行使比例", "執行比例": "行使比例",
         "履約價": "履約價", "履約價格": "履約價",
-        "即時槓桿": "即時槓桿", "有效槓桿": "即時槓桿", "實質槓桿": "即時槓桿", "槓桿比率": "即時槓桿","剩餘天數": "剩餘天數",
-"剩餘天": "剩餘天數", "價內外程度": "價內外_raw", "實質槓桿": "即時槓桿", "行使比例": "行使比例"
+        "即時槓桿": "即時槓桿", "有效槓桿": "即時槓桿", "實質槓桿": "即時槓桿", "槓桿比率": "即時槓桿", "剩餘天數": "剩餘天數",
+        "價內外程度": "價內外_raw"
     }
-df.columns = (
-    df.columns.astype(str)
-    .str.replace(" ", "", regex=False)
-    .str.strip()
-)
 
-df.rename(columns=col_map, inplace=True)
+    df.columns = (
+        df.columns.astype(str)
+        .str.replace(" ", "", regex=False)
+        .str.strip()
+    )
+
+    df.rename(columns=col_map, inplace=True)
+
     if "代號" not in df.columns:
         df["代號"] = ""
     if "權證名稱" not in df.columns:
