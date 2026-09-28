@@ -219,6 +219,13 @@ try:
     else:
         df = normalize_and_clean_data(df)
         
+        # 顯示除錯資訊
+        st.write("欄位名稱")
+        st.write(df.columns.tolist())
+        if "到期日_raw" in df.columns:
+            st.write("到期日原始資料")
+            st.write(df["到期日_raw"].head(20))
+        
         st.success(f"✅ 成功擷取數據！資料來源：**{source_used}**｜最後更新時間：{update_time}")
 
         # 執行即時量化篩選
