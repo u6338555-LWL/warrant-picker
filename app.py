@@ -16,7 +16,7 @@ st.set_page_config(page_title="專屬權證篩選系統", page_icon="📈", layo
 DEFAULT_CONFIG = {
     "stock_code": "2330",
     "min_days": 150,
-    "moneyness_range": (-10.0, 0.0),  # 預設範圍 -10 ~ 0
+    "moneyness_range": (-10.0, 0.0),
     "price_range": (0.0, 2.0),
     "max_spread": 5.0,
     "max_iv_change": 10.0,
@@ -34,34 +34,23 @@ def reset_defaults():
         st.session_state[key] = val
     st.toast("✅ 已還原為標準預設條件！", icon="🔄")
 
-# 2. 處理價內外：移除價平、保留原意、數值精確到小數點後第一位
-def parse_moneyness(val):
+# 2. 解析價內外數值（僅用於滑桿過濾邏輯）
+def parse_moneyness_for_filter(val):
     s = str(val).strip()
     if not s or s == "nan" or s == "--" or s == "-":
-        return 0.0, "0.0%"
+        return 0.0
     
-    if "價平" in s or s == "0" or s == "0.0":
-        return 0.0, "0.0%"
-
     is_wai = "外" in s or ("-" in s and "內" not in s)
-    
     clean_num = re.sub(r"[^\d.]", "", s)
     try:
         num = float(clean_num)
     except:
         num = 0.0
         
-    if num == 0.0:
-        return 0.0, "0.0%"
-        
     if is_wai:
-        val_float = -abs(num)
-        text_str = f"外{abs(num):.1f}%"
+        return -abs(num)
     else:
-        val_float = abs(num)
-        text_str = f"內{abs(num):.1f}%"
-            
-    return val_float, text_str
+        return abs(num)
 
 # 3. 資料正規化與欄位清洗
 def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
@@ -88,7 +77,7 @@ def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
     if "權證名稱" not in df.columns:
         df["權證名稱"] = ""
 
-    # 精準計算剩餘天數：到期日減去今日
+    # 精準計算剩餘天數：到期日減去今日日期
     today = date.today()
     if "到期日_raw" in df.columns:
         def calc_days(d_str):
@@ -126,7 +115,7 @@ def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
         else:
             df[col] = 0.0
 
-    # 處理價內外
+    # 價內外：直接保留資料來源的原始字串顯示
     raw_col = "價內外_raw" if "價內外_raw" in df.columns else None
     if not raw_col:
         for c in df.columns:
@@ -135,12 +124,11 @@ def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
                 break
 
     if raw_col:
-        parsed_results = df[raw_col].apply(parse_moneyness)
-        df["價內外_數值"] = [r[0] for r in parsed_results]
-        df["價內外（％）"] = [r[1] for r in parsed_results]
+        df["價內外（％）"] = df[raw_col].astype(str).str.strip()
+        df["價內外_數值"] = df[raw_col].apply(parse_moneyness_for_filter)
     else:
-        df["價內外_數值"] = 0.0
         df["價內外（％）"] = "0.0%"
+        df["價內外_數值"] = 0.0
 
     # 計算價差比 (%) = |賣價 - 買價| / 賣價 * 100
     valid_mask = (df["賣價"] > 0) & (df["買價"] > 0)
@@ -202,7 +190,6 @@ st.title("📈 權證專屬量化篩選器")
 stock_code = st.sidebar.text_input("標的股票代碼", key="stock_code")
 min_days = st.sidebar.number_input("剩餘天數 ≥ (天)", min_value=10, max_value=500, key="min_days")
 
-# 確保滑桿的可選範圍為 -30 到 30，並讀取 session_state 預設值 (-10, 0)
 moneyness_range = st.sidebar.slider(
     "價內外 % 範圍", 
     min_value=-30.0, 
