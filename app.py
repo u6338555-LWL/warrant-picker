@@ -16,8 +16,8 @@ st.set_page_config(page_title="專屬權證篩選系統", page_icon="📈", layo
 DEFAULT_CONFIG = {
     "stock_code": "2330",
     "min_days": 150,
-    "moneyness_range": (-30.0, 30.0), # 涵蓋價外與價內
-    "price_range": (0.1, 10.0),
+    "moneyness_range": (-10.0, 0.0),
+    "price_range": (0.0, 20.0),
     "max_spread": 5.0,
     "max_iv_change": 10.0,
 }
@@ -37,13 +37,14 @@ def reset_defaults():
         st.session_state[key] = val
     st.toast("✅ 已還原為標準預設條件！", icon="🔄")
 
-# 2. 精準價內外解析與格式化函數 (完整支援價內與價外雙向)
+# 2. 修正價內外解析與格式化（確保正負號與文字完全相符）
 def parse_moneyness(val):
     s = str(val).strip()
     if not s or s == "nan" or s == "--" or s == "-":
         return 0.0, "0.00%"
     
-    is_wai = "外" in s or "-" in s
+    # 判斷是否為外盤或負數
+    is_wai = "外" in s or ("-" in s and "內" not in s)
     is_nei = "內" in s
     
     clean_num = re.sub(r"[^\d.]", "", s)
@@ -55,7 +56,7 @@ def parse_moneyness(val):
     if num == 0.0:
         return 0.0, "0.00%"
         
-    if is_wai and not is_nei:
+    if is_wai:
         val_float = -abs(num)
         text_str = f"外{abs(num):.2f}%"
     else:
@@ -64,7 +65,7 @@ def parse_moneyness(val):
             
     return val_float, text_str
 
-# 3. 忠實對應網站欄位的正規化清洗邏輯
+# 3. 資料正規化與欄位清洗
 def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     
@@ -89,17 +90,21 @@ def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
     if "權證名稱" not in df.columns:
         df["權證名稱"] = ""
 
-    # 計算剩餘天數 (針對有到期日格式的資料源)
+    # 精準計算剩餘天數 (到期日減去今日)
     today = date.today()
-    if "到期日_raw" in df.columns and ("剩餘天數" not in df.columns or df["剩餘天數"].isna().all()):
+    if "到期日_raw" in df.columns:
         def calc_days(d_str):
             try:
                 d_str = str(d_str).strip().replace("-", "/").split(" ")[0]
                 target_date = datetime.strptime(d_str, "%Y/%m/%d").date()
                 return max(0, (target_date - today).days)
             except:
-                return 180
+                return 0
         df["剩餘天數"] = df["到期日_raw"].apply(calc_days)
+    elif "剩餘天數" in df.columns:
+        df["剩餘天數"] = pd.to_numeric(df["剩餘天數"].astype(str).str.replace(r"[^\d]", "", regex=True), errors="coerce").fillna(0).astype(int)
+    else:
+        df["剩餘天數"] = 0
 
     # 數值清理
     num_cols = ["買價", "賣價", "成交價", "即時委賣 IV", "昨日委賣 IV", "剩餘天數", "行使比例", "履約價", "即時槓桿"]
@@ -155,7 +160,7 @@ def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
 
     return df
 
-# 4. 強化資料擷取模組 (支援多重來源與備用通道)
+# 4. 資料擷取模組
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_warrants(stock_code: str):
     headers = {
@@ -168,7 +173,6 @@ def fetch_warrants(stock_code: str):
     status_code = 200
     raw_preview = ""
 
-    # 優先嘗試 HiStock 結構化資料源 (確保穩定取得 12 核心欄位)
     try:
         url = f"https://histock.tw/stock/warrant.aspx?no={stock_code}"
         resp = requests.get(url, headers=headers, timeout=10)
@@ -184,33 +188,20 @@ def fetch_warrants(stock_code: str):
                     df = t
                     break
     except Exception as e:
-        raw_preview += f"\nHiStock 請求例外: {e}"
-
-    # 若 HiStock 未成功，嘗試備用 API / 網頁
-    if df is None or df.empty:
-        try:
-            url_cmoney = f"https://www.cmoney.tw/finance/warrantsbystock.aspx?stock={stock_code}"
-            resp = requests.get(url_cmoney, headers={"User-Agent": headers["User-Agent"]}, verify=False, timeout=10)
-            if resp.status_code == 200:
-                tables = pd.read_html(StringIO(resp.text))
-                for t in tables:
-                    if not t.empty and any(k in str(t.columns) for k in ["代號", "權證"]):
-                        df = t
-                        source_used = "CMoney 數據源"
-                        break
-        except Exception as e:
-            raw_preview += f"\n備用源請求例外: {e}"
+        raw_preview += f"\n請求例外: {e}"
 
     fetch_time = datetime.now().strftime("%H:%M:%S")
     return df, status_code, raw_preview, fetch_time, source_used
 
-# 5. 主頁面與控制面板
+# 5. 主頁面與控制面板 (參數調整即時更新)
 st.title("📈 權證專屬量化篩選器")
 
 stock_code = st.sidebar.text_input("標的股票代碼", key="stock_code")
 min_days = st.sidebar.number_input("剩餘天數 ≥ (天)", min_value=10, max_value=500, key="min_days")
 
-moneyness_range = st.sidebar.slider("價內外 % 範圍", -50.0, 50.0, key="moneyness_range", step=0.5)
+# 價內外範圍預設 -10 ~ 0，可選範圍 -30 ~ 30
+moneyness_range = st.sidebar.slider("價內外 % 範圍", -30.0, 30.0, key="moneyness_range", step=0.5)
+
 price_range = st.sidebar.slider("權證買價範圍 (元)", 0.0, 20.0, key="price_range", step=0.1)
 max_spread = st.sidebar.slider("價差比 ≤ (%)", 0.0, 50.0, key="max_spread", step=0.5)
 max_iv_change = st.sidebar.slider("相對變動率 ≤ (%)", 0.0, 50.0, key="max_iv_change", step=0.5)
@@ -231,7 +222,7 @@ try:
         
         st.success(f"✅ 成功擷取數據！資料來源：**{source_used}**｜最後更新時間：{update_time}")
 
-        # 執行量化篩選
+        # 執行即時量化篩選
         cond_days = df["剩餘天數"] >= min_days if "剩餘天數" in df.columns else True
         cond_money = (
             (df["價內外_數值"] >= moneyness_range[0]) & (df["價內外_數值"] <= moneyness_range[1])
@@ -243,7 +234,7 @@ try:
         )
         cond_spread = df["價差比"] <= max_spread if "價差比" in df.columns else True
         
-        # 相對變動率計算
+        # 計算相對變動率
         if "即時委賣 IV" in df.columns and "昨日委賣 IV" in df.columns:
             valid_iv = df["即時委賣 IV"].notna() & df["昨日委賣 IV"].notna() & (df["昨日委賣 IV"] > 0)
             df["相對變動率"] = 0.0
@@ -260,7 +251,7 @@ try:
         filtered_df = df[cond_days & cond_money & cond_price & cond_spread & cond_iv].copy()
         
         if filtered_df.empty:
-            st.warning("⚠️ 在目前條件下無符合權證，已為您展延條件展示初步搜尋結果：")
+            st.warning("⚠️ 在目前條件下無符合權證，以下為買價符合範圍之初步結果：")
             filtered_df = df[cond_price].copy()
 
         # 依差槓比由小到大 (升冪) 排序
@@ -269,7 +260,7 @@ try:
 
         st.markdown(f"### 🎯 符合策略之精選權證 (共 {len(filtered_df)} 檔)")
 
-        # 指定 14 欄順序：代號 權證名稱 買價 賣價 成交價 即時委賣 IV 昨日委賣 IV 價內外（％） 剩餘天數 行使比例 履約價 即時槓桿 價差比 差槓比
+        # 完整 14 欄原始網站對應欄位順序
         display_cols = [
             "代號", "權證名稱", "買價", "賣價", "成交價",
             "即時委賣 IV", "昨日委賣 IV", "價內外（％）", "剩餘天數",
