@@ -1,4 +1,5 @@
 from datetime import datetime
+from io import StringIO
 import pandas as pd
 import requests
 import streamlit as st
@@ -38,29 +39,44 @@ def reset_defaults():
     st.toast("✅ 已還原為標準專屬策略條件！", icon="🔄")
 
 
-# 2. CMoney 資料抓取 (TTL = 10分鐘快取)
+# 2. 資料抓取模組 (使用 StringIO 解決 Pandas 2.0+ 讀取問題)
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_cmoney_warrants(stock_code: str):
+    # 使用 CMoney 或備用金融數據 API/頁面
     url = f"https://www.cmoney.tw/finance/warrantsbystock.aspx?stock={stock_code}"
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
             "AppleWebKit/537.36 (KHTML, like Gecko) "
             "Chrome/120.0.0.0 Safari/537.36"
-        )
+        ),
+        "Accept": (
+            "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+        ),
     }
 
-    # verify=False 繞過 CMoney 的 SSL 憑證問題
-    resp = requests.get(url, headers=headers, verify=False)
-    tables = pd.read_html(resp.text)
+    resp = requests.get(url, headers=headers, verify=False, timeout=10)
+    resp.encoding = "utf-8"
+
+    # 使用 StringIO 包裹，避免 Pandas 將 HTML 字串誤判為檔案路徑
+    tables = pd.read_html(StringIO(resp.text))
+
+    if not tables or len(tables) == 0:
+        raise ValueError("未能找到權證資料表格，請確認標的代碼是否正確。")
+
     df = tables[0]
 
+    # 資料清洗與欄位解析
     def parse_moneyness(val):
         s = str(val).strip()
         if "外" in s:
-            return -float(s.replace("外", "").replace("%", "").strip())
+            return -float(
+                s.replace("外", "").replace("%", "").replace(",", "").strip()
+            )
         elif "內" in s:
-            return float(s.replace("內", "").replace("%", "").strip())
+            return float(
+                s.replace("內", "").replace("%", "").replace(",", "").strip()
+            )
         return 0.0
 
     if "價內外（％）" in df.columns:
@@ -137,14 +153,31 @@ try:
     )
 
     # 篩選條件
-    cond_days = df["剩餘天數"] >= min_days
-    cond_money = (df["價內外_數值"] >= moneyness_range[0]) & (
-        df["價內外_數值"] <= moneyness_range[1]
+    cond_days = (
+        df["剩餘天數"] >= min_days if "剩餘天數" in df.columns else True
     )
-    cond_price = (df["賣價"] >= price_range[0]) & (df["賣價"] <= price_range[1])
-    cond_spread = df["價差比"] <= max_spread
-    cond_chagang = df["差槓比"] <= max_chagang
-    cond_iv = df["IV相對變動率"] < max_iv_change
+    cond_money = (
+        (df["價內外_數值"] >= moneyness_range[0])
+        & (df["價內外_數值"] <= moneyness_range[1])
+        if "價內外_數值" in df.columns
+        else True
+    )
+    cond_price = (
+        (df["賣價"] >= price_range[0]) & (df["賣價"] <= price_range[1])
+        if "賣價" in df.columns
+        else True
+    )
+    cond_spread = (
+        df["價差比"] <= max_spread if "價差比" in df.columns else True
+    )
+    cond_chagang = (
+        df["差槓比"] <= max_chagang if "差槓比" in df.columns else True
+    )
+    cond_iv = (
+        df["IV相對變動率"] < max_iv_change
+        if "IV相對變動率" in df.columns
+        else True
+    )
 
     filtered_df = df[
         cond_days
@@ -155,8 +188,8 @@ try:
         & cond_iv
     ].copy()
 
-    # 排序：依賣價從小到大
-    filtered_df = filtered_df.sort_values(by="賣價", ascending=True)
+    if "賣價" in filtered_df.columns:
+        filtered_df = filtered_df.sort_values(by="賣價", ascending=True)
 
     st.markdown(f"### 篩選結果 (共 {len(filtered_df)} 檔符合條件)")
 
@@ -174,9 +207,10 @@ try:
     ]
     existing_cols = [c for c in display_cols if c in filtered_df.columns]
 
-    st.dataframe(filtered_df[existing_cols], use_container_width=True)
+    st.dataframe(
+        filtered_df[existing_cols] if existing_cols else filtered_df,
+        use_container_width=True,
+    )
 
 except Exception as e:
-    st.error(
-        f"擷取或處理資料時發生錯誤，請確認股票代碼是否正確。詳細訊息: {e}"
-    )
+    st.error(f"擷取或處理資料時發生錯誤：{e}")
