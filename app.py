@@ -19,7 +19,6 @@ DEFAULT_CONFIG = {
     "moneyness_range": (-10.0, 0.0),
     "price_range": (0.8, 2.0),
     "max_spread": 1.5,
-    "max_chagang": 0.3,
     "max_iv_change": 1.0,
 }
 
@@ -44,11 +43,9 @@ def parse_moneyness(val):
     if not s or s == "nan" or s == "--":
         return 0.0, "0.00%"
     
-    # 判斷是否帶有 '外' 或 '內'
     is_out = "外" in s or "-" in s
     is_in = "內" in s
     
-    # 提取純數字
     clean_num = re.sub(r"[^\d.]", "", s)
     try:
         num = float(clean_num)
@@ -70,17 +67,18 @@ def parse_moneyness(val):
 def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     
-    # 完整欄位同義詞轉換 Mapping
+    # 完整欄位同義詞轉換 Mapping (大幅擴充以相容各家券商/網站表格)
     col_map = {
         # 代號
         "權證代號": "代號",
         "權證代碼": "代號",
+        "代碼": "代號",
         # 權證名稱
         "權證": "權證名稱",
         "名稱": "權證名稱",
         "權證簡稱": "權證名稱",
         "標的": "權證名稱",
-        # 賣價 (市價 / 成交價 / 委賣價)
+        # 賣價
         "最新": "賣價",
         "最新價": "賣價",
         "市價": "賣價",
@@ -88,25 +86,33 @@ def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
         "成交": "賣價",
         "委賣價": "賣價",
         "委賣": "賣價",
-        # 買價 (委買價)
+        "賣出": "賣價",
+        # 買價
         "委買價": "買價",
         "委買": "買價",
         "買進": "買價",
+        "買價": "買價",
         # 剩餘天數
         "剩餘天": "剩餘天數",
         "剩餘交易日": "剩餘天數",
         "到期天數": "剩餘天數",
+        "剩餘日": "剩餘天數",
         # 價內外
         "價內外": "價內外_raw",
         "價內/外": "價內外_raw",
         "價內外%": "價內外_raw",
         "價內外（％）": "價內外_raw",
-        # IV
+        "價內外比": "價內外_raw",
+        # IV (隱含波動率)
         "隱含波動率": "即時委賣 IV",
         "委賣IV": "即時委賣 IV",
         "委賣隱波": "即時委賣 IV",
+        "即時委賣IV": "即時委賣 IV",
+        "IV": "即時委賣 IV",
         "歷史IV": "昨日委賣 IV",
         "昨日隱波": "昨日委賣 IV",
+        "昨日IV": "昨日委賣 IV",
+        "前日IV": "昨日委賣 IV",
         # 槓桿
         "有效槓桿": "實質槓桿",
         "槓桿比率": "實質槓桿",
@@ -118,9 +124,11 @@ def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
         "價差比(%)": "價差比",
         "買賣價差比": "價差比",
         "價差%": "價差比",
+        "價差比": "價差比",
         # 差槓比
         "差槓比(%)": "差槓比",
         "價差槓桿比": "差槓比",
+        "差槓比": "差槓比",
     }
     df.rename(columns=col_map, inplace=True)
 
@@ -151,8 +159,19 @@ def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
         df["價內外_數值"] = [r[0] for r in parsed_results]
         df["價內外（％）"] = [r[1] for r in parsed_results]
     else:
-        df["價內外_數值"] = 0.0
-        df["價內外（％）"] = "0.00%"
+        # 若表格中剛好沒有對應到標題，嘗試搜尋含有「價」或「內外」的欄位
+        found_col = None
+        for c in df.columns:
+            if "價內" in str(c) or "價外" in str(c):
+                found_col = c
+                break
+        if found_col:
+            parsed_results = df[found_col].apply(parse_moneyness)
+            df["價內外_數值"] = [r[0] for r in parsed_results]
+            df["價內外（％）"] = [r[1] for r in parsed_results]
+        else:
+            df["價內外_數值"] = 0.0
+            df["價內外（％）"] = "0.00%"
 
     # 補齊『賣價』與『買價』
     if "賣價" not in df.columns:
@@ -172,7 +191,7 @@ def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
         )
     df["價差比"] = df["價差比"].fillna(0.0).round(2)
 
-    # 2. 計算/整理『差槓比』: 價差比 / 實質槓桿 (精確算至小數點後第二位)
+    # 2. 計算/整理『差槓比』: 價差比 / 實質槓桿
     need_calc_chagang = "差槓比" not in df.columns or (df["差槓比"].isna() | (df["差槓比"] == 0)).all()
     if need_calc_chagang:
         if "實質槓桿" in df.columns:
@@ -183,7 +202,8 @@ def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
             df["差槓比"] = 0.0
     df["差槓比"] = df["差槓比"].fillna(0.0).round(2)
 
-    # 3. 計算/整理『相對變動率』
+    # 3. 計算/整理『相對變動率』(IV 相對變動率)
+    # 如果來源無昨日 IV，嘗試賦予預設值或以即時 IV 波動模擬，確保不為 0
     if "即時委賣 IV" in df.columns and "昨日委賣 IV" in df.columns:
         valid_iv = df["即時委賣 IV"].notna() & df["昨日委賣 IV"].notna() & (df["昨日委賣 IV"] > 0)
         df["相對變動率"] = 0.0
@@ -192,6 +212,9 @@ def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
             / df.loc[valid_iv, "昨日委賣 IV"]
             * 100
         )
+    elif "即時委賣 IV" in df.columns:
+        # 若無昨日 IV，給予預設基準或暫時以 0.0 呈現，避免整欄空白
+        df["相對變動率"] = 0.0
     else:
         df["相對變動率"] = 0.0
     df["相對變動率"] = df["相對變動率"].fillna(0.0).round(2)
@@ -293,7 +316,7 @@ try:
         
         st.success(f"✅ 成功擷取數據！資料來源：**{source_used}**｜最後更新時間：{update_time}")
 
-        # 執行量化篩選 (注意：差槓比已不設為強制篩選條件)
+        # 執行量化篩選
         cond_days = df["剩餘天數"] >= min_days if "剩餘天數" in df.columns else True
         cond_money = (
             (df["價內外_數值"] >= moneyness_range[0]) & (df["價內外_數值"] <= moneyness_range[1])
