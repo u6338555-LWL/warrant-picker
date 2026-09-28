@@ -99,11 +99,11 @@ def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
     if ("價差比" not in df.columns or df["價差比"].isna().all()) and ("賣價" in df.columns and "買價" in df.columns):
         df["價差比"] = ((df["賣價"] - df["買價"]).abs() / df["賣價"]) * 100
 
-    # 計算 IV 相對變動率
+    # 計算 IV 相對變動率（顯示名稱統一為：相對變動率）
     if "即時委賣 IV" in df.columns and "昨日委賣 IV" in df.columns:
-        df["IV相對變動率"] = ((df["即時委賣 IV"] - df["昨日委賣 IV"]).abs() / df["昨日委賣 IV"]) * 100
+        df["相對變動率"] = ((df["即時委賣 IV"] - df["昨日委賣 IV"]).abs() / df["昨日委賣 IV"]) * 100
     else:
-        df["IV相對變動率"] = 0.0
+        df["相對變動率"] = 0.0
 
     return df
 
@@ -184,7 +184,7 @@ moneyness_range = st.sidebar.slider("價內外 % 範圍", -30.0, 10.0, key="mone
 price_range = st.sidebar.slider("權證賣價範圍 (元)", 0.1, 10.0, key="price_range", step=0.1)
 max_spread = st.sidebar.slider("價差比 ≤ (%)", 0.1, 5.0, key="max_spread", step=0.1)
 max_chagang = st.sidebar.slider("差槓比 ≤", 0.05, 1.00, key="max_chagang", step=0.05)
-max_iv_change = st.sidebar.slider("IV 相對變動率 ≤ (%)", 0.1, 5.0, key="max_iv_change", step=0.1)
+max_iv_change = st.sidebar.slider("相對變動率 ≤ (%)", 0.1, 5.0, key="max_iv_change", step=0.1)
 
 if st.sidebar.button("🔄 一鍵還原專屬預設", on_click=reset_defaults, type="primary", use_container_width=True):
     pass
@@ -215,7 +215,7 @@ try:
         )
         cond_spread = df["價差比"] <= max_spread if "價差比" in df.columns else True
         cond_chagang = df["差槓比"] <= max_chagang if "差槓比" in df.columns else True
-        cond_iv = df["IV相對變動率"] <= max_iv_change if "IV相對變動率" in df.columns else True
+        cond_iv = df["相對變動率"] <= max_iv_change if "相對變動率" in df.columns else True
 
         filtered_df = df[cond_days & cond_money & cond_price & cond_spread & cond_chagang & cond_iv].copy()
         
@@ -224,10 +224,9 @@ try:
 
         st.markdown(f"### 🎯 符合策略之精選權證 (共 {len(filtered_df)} 檔)")
 
-        # 指定欄位順序：代號 ➔ 權證名稱 ➔ 賣價...
+        # 指定欄位與順序：代號 權證名稱 買價 賣價 相對變動率 價差比 差槓比
         display_cols = [
-            "代號", "權證名稱", "賣價", "買價", "價內外（％）",
-            "剩餘天數", "價差比", "差槓比", "即時委賣 IV", "昨日委賣 IV", "IV相對變動率"
+            "代號", "權證名稱", "買價", "賣價", "相對變動率", "價差比", "差槓比"
         ]
         existing_cols = [c for c in display_cols if c in filtered_df.columns]
 
