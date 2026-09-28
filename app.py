@@ -92,45 +92,53 @@ df.columns = (
 # =====================================================
 today = date.today()
 if "剩餘天數" in df.columns:
-df["剩餘天數"] = pd.to_numeric(
-df["剩餘天數"]
-.astype(str)
-.str.extract(r"(\d+)")[0],
-errors="coerce"
+    
+    df["剩餘天數"] = pd.to_numeric(
+        df["剩餘天數"]
+        .astype(str)
+        .str.extract(r"(\d+)")[0],
+        errors="coerce"
 ).fillna(0).astype(int)
+
 if "到期日_raw" in df.columns:
-df["到期日"] = df["到期日_raw"].astype(str)
+    df["到期日"] = df["到期日_raw"].astype(str)
 elif "到期日_raw" in df.columns:
-df["到期日"] = df["到期日_raw"].astype(str)
-def calc_days(d_str):
-d_str = str(d_str).strip()
-for fmt in [
-"%Y/%m/%d",
-"%Y-%m-%d",
-"%Y.%m.%d",
-"%Y%m%d",
-"%y/%m/%d"
-]:
-try:
-target = datetime.strptime(
-d_str,
-fmt
-).date()
-return max(
-0,
-(target - today).days
+    
+    df["到期日"] = df["到期日_raw"].astype(str)
+
+    def calc_days(d_str):
+        
+        d_str = str(d_str).strip()
+
+        for fmt in (
+            "%Y/%m/%d",
+            "%Y-%m-%d",
+            "%Y.%m.%d",
+            "%Y%m%d",
+            "%y/%m/%d"
+        ):
+        try:
+            target = datetime.strptime(
+                d_str,
+                fmt
+            ).date()
+            
+            return max(
+                0,
+                (target - today).days
 )
-except:
-pass
-return 0
+        except:
+            pass
+    return 0
 df["剩餘天數"] = (
-df["到期日_raw"]
-.apply(calc_days)
-.astype(int)
+    df["到期日_raw"]
+    .apply(calc_days)
+    .astype(int)
 )
 else:
-df["到期日"] = "--"
-df["剩餘天數"] = 0
+
+    df["到期日"] = "--"
+    df["剩餘天數"] = 0
     # 數值清理
     num_cols = ["買價", "賣價", "成交價", "即時委賣 IV", "昨日委賣 IV", "剩餘天數", "行使比例", "履約價", "即時槓桿"]
     for col in num_cols:
