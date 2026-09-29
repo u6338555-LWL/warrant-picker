@@ -293,17 +293,11 @@ else True
             
         cond_iv = df["相對變動率"] <= max_iv_change
         st.write("總筆數", len(df))
-
-        st.write("天數符合", cond_days.sum())
-
-        st.write("價內外符合", cond_money.sum())
-
-        st.write("價格符合", cond_price.sum())
-
-        st.write("價差符合", cond_spread.sum())
-
-        st.write("IV符合", cond_iv.sum())
-
+        st.write("天數符合", int(cond_days.sum()))
+        st.write("價內外符合", int(cond_money.sum()))
+        st.write("價格符合", int(cond_price.sum()))
+        st.write("價差符合", int(cond_spread.sum()))
+        st.write("IV符合", int(cond_iv.sum()))
 
         filtered_df = df[
             cond_days &
@@ -313,15 +307,24 @@ else True
             cond_iv
         ].copy()
 
-        if filtered_df.empty:
-            st.warning(
-                "⚠️ 在目前條件下沒有符合所有篩選條件的權證"
-            )
+   
+    st.warning(
+        "⚠️ 在目前條件下沒有符合所有篩選條件的權證"
+    )
 
-            filtered_df = pd.DataFrame(
-                columns=df.columns
-            )
+    st.write(
+        df[
+            [
+                "代號",
+                "剩餘天數",
+                "價內外_數值",
+                "買價",
+                "價差比"
+            ]
+        ].head(20)
+    )
 
+    st.stop()
         # 依差槓比由小到大 (升冪) 排序
         if "差槓比" in filtered_df.columns:
             filtered_df = filtered_df.sort_values(by="差槓比", ascending=True)
