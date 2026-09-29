@@ -292,16 +292,24 @@ else True
             
         cond_iv = df["相對變動率"] <= max_iv_change
 
-        filtered_df = df[cond_days & cond_money & cond_price & cond_spread & cond_iv].copy()
-        
+       filtered_df = df[
+cond_days &
+cond_money &
+cond_price &
+cond_spread &
+cond_iv
+].copy()
+ 
 if filtered_df.empty:
-    st.warning(
-        "⚠️ 在目前條件下沒有符合所有篩選條件的權證"
+st.warning(
+"⚠️ 在目前條件下沒有符合所有篩選條件的權證"
 )
  
 filtered_df = pd.DataFrame(
 columns=df.columns
 )
+
+
 
 
 
