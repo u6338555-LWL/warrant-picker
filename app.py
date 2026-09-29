@@ -356,23 +356,3 @@ unsafe_allow_html=True
 
 except Exception as e:
     st.error(f"❌ 處理資料時發生例外錯誤：{e}")
-    st.write("欄位名稱")
-    st.write(df.columns.tolist())
-
-    st.write("資料預覽")
-    st.dataframe(df.head(20))
-
-    debug_cols = [
-    c for c in
-    [
-        "代號",
-        "價內外_raw",
-        "價內外_數值",
-        "剩餘天數"
-    ]
-    if c in df.columns
-]
-
-st.write(
-    df[debug_cols].head(20)
-)
