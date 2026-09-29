@@ -210,7 +210,7 @@ def fetch_warrants(stock_code: str):
 # 5. 主頁面與控制面板
 st.markdown("")
 st.title("專屬權證篩選系統")
- 
+
 stock_code = st.text_input(
 "股票代號",
 value="2330"
