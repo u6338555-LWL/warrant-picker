@@ -208,15 +208,17 @@ st.markdown(
 unsafe_allow_html=True
 )
 
-stock_code = st.sidebar.text_input("標的股票代碼", key="stock_code")
-min_days = st.sidebar.slider(
-"剩餘天數 ≥ (天)",
+days_range = st.sidebar.slider(
+"剩餘天數範圍 (天)",
 min_value=30,
 max_value=300,
-value=st.session_state.min_days,
+value=(st.session_state.min_days, 300),
 step=1,
-key="min_days"
+key="days_range"
 )
+ 
+min_days = days_range[0]
+
 
 
 moneyness_range = st.sidebar.slider(
