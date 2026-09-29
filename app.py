@@ -15,11 +15,8 @@ st.set_page_config(page_title="專屬權證篩選系統", page_icon="📈", layo
 # 1. 統一管理預設參數與範圍
 DEFAULT_CONFIG = {
     "stock_code": "2330",
-    "min_days": 150,
-    "moneyness_range": (-10.0, 0.0),
-    "price_range": (0.0, 2.0),
-    "max_spread": 5.0,
-    "max_iv_change": 10.0,
+    "min_days": 30,
+    "moneyness_range": (-100.0, 100.0),
 }
 
 def init_state():
@@ -142,6 +139,15 @@ def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
                 break
 
     if raw_col:
+        st.write(
+    df[
+        [
+            "代號",
+            "價內外_raw",
+            "價內外_數值"
+        ]
+    ].head(20)
+)
         df["價內外（％）"] = df[raw_col].astype(str).str.strip()
         df["價內外_數值"] = df[raw_col].apply(parse_moneyness_for_filter)
     else:
@@ -268,10 +274,7 @@ if "剩餘天數" in df.columns
 else True
 )
 
-        cond_money = (
-            (df["價內外_數值"] >= moneyness_range[0]) & (df["價內外_數值"] <= moneyness_range[1])
-            if "價內外_數值" in df.columns else True
-        )
+        cond_money = True
         cond_price = (
             (df["買價"] >= price_range[0]) & (df["買價"] <= price_range[1])
             if "買價" in df.columns else True
@@ -350,3 +353,14 @@ st.write(df.columns.tolist())
 
 st.write("資料預覽")
 st.dataframe(df.head(20))
+
+st.write(
+df[
+[
+"代號",
+"價內外_raw",
+"價內外_數值",
+"剩餘天數"
+]
+].head(20)
+)
