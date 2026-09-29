@@ -291,6 +291,17 @@ else True
             df["相對變動率"] = 0.0
             
         cond_iv = df["相對變動率"] <= max_iv_change
+        st.write("總筆數", len(df))
+
+        st.write("天數符合", cond_days.sum())
+
+        st.write("價內外符合", cond_money.sum())
+
+        st.write("價格符合", cond_price.sum())
+
+        st.write("價差符合", cond_spread.sum())
+
+        st.write("IV符合", cond_iv.sum())
 
         filtered_df = df[
             cond_days &
