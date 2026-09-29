@@ -203,10 +203,27 @@ def fetch_warrants(stock_code: str):
     return df, status_code, raw_preview, fetch_time, source_used
 
 # 5. 主頁面與控制面板
-st.title("📈 權證專屬量化篩選器")
+st.markdown(
+"<h4>📈 權證專屬量化篩選器</h4>",
+unsafe_allow_html=True
+)
+stock_code = st.sidebar.text_input(
+"標的股票代碼",
+key="stock_code"
+)
 
-stock_code = st.sidebar.text_input("標的股票代碼", key="stock_code")
-min_days = st.sidebar.number_input("剩餘天數 ≥ (天)", min_value=10, max_value=500, key="min_days")
+days_range = st.sidebar.slider(
+"剩餘天數範圍 (天)",
+min_value=30,
+max_value=300,
+value=(st.session_state.min_days, 300),
+step=1,
+key="days_range"
+)
+ 
+min_days = days_range[0]
+
+
 
 moneyness_range = st.sidebar.slider(
     "價內外 % 範圍", 
@@ -233,7 +250,7 @@ try:
             st.code(raw_preview, language="html")
     else:
         df = normalize_and_clean_data(df)
-        
+        st.write(df.columns.tolist())
         # 顯示除錯資訊
         st.write("欄位名稱")
         st.write(df.columns.tolist())
@@ -244,7 +261,13 @@ try:
         st.success(f"✅ 成功擷取數據！資料來源：**{source_used}**｜最後更新時間：{update_time}")
 
         # 執行即時量化篩選
-        cond_days = df["剩餘天數"] >= min_days if "剩餘天數" in df.columns else True
+        cond_days = (
+(df["剩餘天數"] >= days_range[0]) &
+(df["剩餘天數"] <= days_range[1])
+if "剩餘天數" in df.columns
+else True
+)
+
         cond_money = (
             (df["價內外_數值"] >= moneyness_range[0]) & (df["價內外_數值"] <= moneyness_range[1])
             if "價內外_數值" in df.columns else True
@@ -268,18 +291,43 @@ try:
             df["相對變動率"] = 0.0
             
         cond_iv = df["相對變動率"] <= max_iv_change
+        st.write("總筆數", len(df))
 
-        filtered_df = df[cond_days & cond_money & cond_price & cond_spread & cond_iv].copy()
-        
+        st.write("天數符合", cond_days.sum())
+
+        st.write("價內外符合", cond_money.sum())
+
+        st.write("價格符合", cond_price.sum())
+
+        st.write("價差符合", cond_spread.sum())
+
+        st.write("IV符合", cond_iv.sum())
+
+        filtered_df = df[
+            cond_days &
+            cond_money &
+            cond_price &
+            cond_spread &
+            cond_iv
+        ].copy()
+
         if filtered_df.empty:
-            st.warning("⚠️ 在目前條件下無符合權證，以下為買價符合範圍之初步結果：")
-            filtered_df = df[cond_price].copy()
+            st.warning(
+                "⚠️ 在目前條件下沒有符合所有篩選條件的權證"
+            )
+
+            filtered_df = pd.DataFrame(
+                columns=df.columns
+            )
 
         # 依差槓比由小到大 (升冪) 排序
         if "差槓比" in filtered_df.columns:
             filtered_df = filtered_df.sort_values(by="差槓比", ascending=True)
 
-        st.markdown(f"### 🎯 符合策略之精選權證 (共 {len(filtered_df)} 檔)")
+        st.markdown(
+f"<h4>🎯 符合策略之精選權證 (共 {len(filtered_df)} 檔)</h4>",
+unsafe_allow_html=True
+)
 
         display_cols = [
             "代號", "權證名稱", "買價", "賣價", "成交價",
