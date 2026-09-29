@@ -202,5 +202,3 @@ def fetch_warrants(stock_code: str):
     fetch_time = datetime.now().strftime("%H:%M:%S")
     return df, status_code, raw_preview, fetch_time, source_used
 
-# 5. 主頁面與控制面板
-st.markdown("
