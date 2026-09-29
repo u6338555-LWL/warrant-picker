@@ -266,7 +266,10 @@ if "剩餘天數" in df.columns
 else True
 )
 
-        cond_money = True
+        cond_money = pd.Series(
+            True,
+            index=df.index
+)
         cond_price = (
             (df["買價"] >= price_range[0]) & (df["買價"] <= price_range[1])
             if "買價" in df.columns else True
