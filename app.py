@@ -207,6 +207,10 @@ st.markdown(
 "<h4>📈 權證專屬量化篩選器</h4>",
 unsafe_allow_html=True
 )
+stock_code = st.sidebar.text_input(
+"標的股票代碼",
+key="stock_code"
+)
 
 days_range = st.sidebar.slider(
 "剩餘天數範圍 (天)",
