@@ -217,21 +217,21 @@ value="2330"
 )
 
 if st.button("查詢"):
- 
+
 df, status_code, raw_preview, fetch_time, source_used = fetch_warrants(stock_code)
- 
+
 st.write(f"資料來源：{source_used}")
 st.write(f"更新時間：{fetch_time}")
- 
+
 if df is not None:
- 
+
 df = normalize_and_clean_data(df)
- 
+
 st.dataframe(
 df,
 use_container_width=True
 )
- 
+
 else:
- 
+
 st.error("查無資料")
