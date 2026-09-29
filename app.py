@@ -300,19 +300,7 @@ else True
         st.write("價差符合", cond_spread.sum())
 
         st.write("IV符合", cond_iv.sum())
-debug_cols = [
-    c for c in [
-        "代號",
-        "剩餘天數",
-        "價內外_raw",
-        "價內外_數值",
-        "買價",
-        "價差比"
-    ]
-    if c in df.columns
-]
 
-st.write(df[debug_cols].head(20))
 
         filtered_df = df[
             cond_days &
