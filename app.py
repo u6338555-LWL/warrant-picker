@@ -293,25 +293,21 @@ else True
         cond_iv = df["相對變動率"] <= max_iv_change
 
        filtered_df = df[
-cond_days &
-cond_money &
-cond_price &
-cond_spread &
-cond_iv
-].copy()
+            cond_days &
+            cond_money &
+            cond_price &
+            cond_spread &
+            cond_iv
+        ].copy()
  
-if filtered_df.empty:
-st.warning(
-"⚠️ 在目前條件下沒有符合所有篩選條件的權證"
-)
+        if filtered_df.empty:
+            st.warning(
+                "⚠️ 在目前條件下沒有符合所有篩選條件的權證"
+        )
  
-filtered_df = pd.DataFrame(
-columns=df.columns
-)
-
-
-
-
+        filtered_df = pd.DataFrame(
+            columns=df.columns
+        )
 
         # 依差槓比由小到大 (升冪) 排序
         if "差槓比" in filtered_df.columns:
