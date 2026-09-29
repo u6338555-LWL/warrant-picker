@@ -139,15 +139,7 @@ def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
                 break
 
     if raw_col:
-        st.write(
-    df[
-        [
-            "代號",
-            "價內外_raw",
-            "價內外_數值"
-        ]
-    ].head(20)
-)
+       
         df["價內外（％）"] = df[raw_col].astype(str).str.strip()
         df["價內外_數值"] = df[raw_col].apply(parse_moneyness_for_filter)
     else:
@@ -232,11 +224,11 @@ min_days = days_range[0]
 
 
 moneyness_range = st.sidebar.slider(
-    "價內外 % 範圍", 
-    min_value=-30.0, 
-    max_value=30.0, 
-    key="moneyness_range", 
-    step=0.5
+    "價內外 % 範圍",
+    min_value=-100.0,
+    max_value=100.0,
+    key="moneyness_range",
+    step=1.0
 )
 
 price_range = st.sidebar.slider("權證買價範圍 (元)", 0.0, 20.0, key="price_range", step=0.1)
@@ -305,6 +297,18 @@ else True
         st.write("價差符合", cond_spread.sum())
 
         st.write("IV符合", cond_iv.sum())
+        st.write(
+            df[
+                [
+                    "代號",
+                    "剩餘天數",
+                    "價內外_raw",
+                    "價內外_數值",
+                    "買價",
+                    "價差比"
+                ]
+            ].head(20)
+)
 
         filtered_df = df[
             cond_days &
