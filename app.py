@@ -294,9 +294,17 @@ else True
 
         filtered_df = df[cond_days & cond_money & cond_price & cond_spread & cond_iv].copy()
         
-        if filtered_df.empty:
-            st.warning("⚠️ 在目前條件下無符合權證，以下為買價符合範圍之初步結果：")
-            filtered_df = df[cond_price].copy()
+if filtered_df.empty:
+ 
+st.warning(
+"⚠️ 在目前條件下沒有符合所有篩選條件的權證"
+)
+ 
+filtered_df = pd.DataFrame(
+columns=df.columns
+)
+
+
 
         # 依差槓比由小到大 (升冪) 排序
         if "差槓比" in filtered_df.columns:
