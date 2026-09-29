@@ -361,13 +361,17 @@ st.write(df.columns.tolist())
 st.write("資料預覽")
 st.dataframe(df.head(20))
 
-st.write(
-df[
-[
-"代號",
-"價內外_raw",
-"價內外_數值",
-"剩餘天數"
+debug_cols = [
+    c for c in
+    [
+        "代號",
+        "價內外_raw",
+        "價內外_數值",
+        "剩餘天數"
+    ]
+    if c in df.columns
 ]
-].head(20)
+
+st.write(
+    df[debug_cols].head(20)
 )
