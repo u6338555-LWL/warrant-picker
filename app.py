@@ -204,7 +204,7 @@ def fetch_warrants(stock_code: str):
 
 # 5. 主頁面與控制面板
 st.markdown(
-"<h3>📈 權證專屬量化篩選器</h3>",
+"<h3>📈 權證專屬量化篩選器</h4>",
 unsafe_allow_html=True
 )
 
