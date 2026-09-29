@@ -261,7 +261,13 @@ try:
         st.success(f"✅ 成功擷取數據！資料來源：**{source_used}**｜最後更新時間：{update_time}")
 
         # 執行即時量化篩選
-        cond_days = df["剩餘天數"] >= min_days if "剩餘天數" in df.columns else True
+        cond_days = (
+(df["剩餘天數"] >= days_range[0]) &
+(df["剩餘天數"] <= days_range[1])
+if "剩餘天數" in df.columns
+else True
+)
+
         cond_money = (
             (df["價內外_數值"] >= moneyness_range[0]) & (df["價內外_數值"] <= moneyness_range[1])
             if "價內外_數值" in df.columns else True
