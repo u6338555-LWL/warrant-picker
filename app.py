@@ -250,7 +250,7 @@ try:
             st.code(raw_preview, language="html")
     else:
         df = normalize_and_clean_data(df)
-        st.write(df.columns.tolist())
+
         # 顯示除錯資訊
         st.write("欄位名稱")
         st.write(df.columns.tolist())
