@@ -208,4 +208,4 @@ def fetch_warrants(stock_code: str):
     return df, status_code, raw_preview, fetch_time, source_used
 
 # 5. 主頁面與控制面板
-        st.markdown('
+st.markdown("")
