@@ -203,7 +203,10 @@ def fetch_warrants(stock_code: str):
     return df, status_code, raw_preview, fetch_time, source_used
 
 # 5. 主頁面與控制面板
-st.title("📈 權證專屬量化篩選器")
+st.markdown(
+"<h3>📈 權證專屬量化篩選器</h3>",
+unsafe_allow_html=True
+)
 
 stock_code = st.sidebar.text_input("標的股票代碼", key="stock_code")
 min_days = st.sidebar.number_input("剩餘天數 ≥ (天)", min_value=10, max_value=500, key="min_days")
