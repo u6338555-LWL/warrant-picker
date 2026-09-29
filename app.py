@@ -215,7 +215,7 @@ stock_code = st.text_input(
 "股票代號",
 value="2330"
 )
- 
+
 if st.button("查詢"):
  
 df, status_code, raw_preview, fetch_time, source_used = fetch_warrants(stock_code)
