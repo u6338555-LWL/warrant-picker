@@ -17,6 +17,9 @@ DEFAULT_CONFIG = {
     "stock_code": "2330",
     "min_days": 30,
     "moneyness_range": (-100.0, 100.0),
+    "price_range": (0.0, 20.0),
+    "max_spread": 50.0,
+    "max_iv_change": 50.0,
 }
 
 def init_state():
