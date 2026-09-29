@@ -282,7 +282,10 @@ try:
         if "差槓比" in filtered_df.columns:
             filtered_df = filtered_df.sort_values(by="差槓比", ascending=True)
 
-        st.markdown(f"### 🎯 符合策略之精選權證 (共 {len(filtered_df)} 檔)")
+        st.markdown(
+f"<h4>🎯 符合策略之精選權證 (共 {len(filtered_df)} 檔)</h4>",
+unsafe_allow_html=True
+)
 
         display_cols = [
             "代號", "權證名稱", "買價", "賣價", "成交價",
