@@ -300,18 +300,19 @@ else True
         st.write("價差符合", cond_spread.sum())
 
         st.write("IV符合", cond_iv.sum())
-        st.write(
-            df[
-                [
-                    "代號",
-                    "剩餘天數",
-                    "價內外_raw",
-                    "價內外_數值",
-                    "買價",
-                    "價差比"
-                ]
-            ].head(20)
-)
+debug_cols = [
+    c for c in [
+        "代號",
+        "剩餘天數",
+        "價內外_raw",
+        "價內外_數值",
+        "買價",
+        "價差比"
+    ]
+    if c in df.columns
+]
+
+st.write(df[debug_cols].head(20))
 
         filtered_df = df[
             cond_days &
@@ -355,13 +356,13 @@ unsafe_allow_html=True
 
 except Exception as e:
     st.error(f"❌ 處理資料時發生例外錯誤：{e}")
-st.write("欄位名稱")
-st.write(df.columns.tolist())
+    st.write("欄位名稱")
+    st.write(df.columns.tolist())
 
-st.write("資料預覽")
-st.dataframe(df.head(20))
+    st.write("資料預覽")
+    st.dataframe(df.head(20))
 
-debug_cols = [
+    debug_cols = [
     c for c in
     [
         "代號",
