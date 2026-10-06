@@ -223,19 +223,7 @@ f"<h4>🎯 符合策略之精選權證 (共 {len(filtered_df)} 檔)</h4>",
 unsafe_allow_html=True
 )
 
-        display_cols = [
-            "代號", "權證名稱", "買價", "賣價", "成交價",
-            "即時委賣 IV", "昨日委賣 IV", "價內外（％）", "剩餘天數",
-            "行使比例", "履約價", "即時槓桿", "價差比", "差槓比"
-        ]
 
-        valid_display_cols = [c for c in display_cols if c in filtered_df.columns]
-
-        st.dataframe(
-            filtered_df[valid_display_cols],
-            use_container_width=True,
-            hide_index=True,
-        )
 
 except Exception as e:
     st.error(f"❌ 處理資料時發生例外錯誤：{e}")
