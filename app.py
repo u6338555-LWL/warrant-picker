@@ -36,22 +36,6 @@ def reset_defaults():
     st.toast("✅ 已還原為標準預設條件！", icon="🔄")
 
 # 2. 解析價內外數值（僅用於滑桿過濾邏輯）
-def parse_moneyness_for_filter(val):
-    s = str(val).strip()
-    if not s or s == "nan" or s == "--" or s == "-":
-        return 0.0
-    
-    is_wai = "外" in s or ("-" in s and "內" not in s)
-    clean_num = re.sub(r"[^\d.]", "", s)
-    try:
-        num = float(clean_num)
-    except:
-        num = 0.0
-        
-    if is_wai:
-        return -abs(num)
-    else:
-        return abs(num)
 
 # 3. 資料正規化與欄位清洗
 def normalize_and_clean_data(df: pd.DataFrame) -> pd.DataFrame:
