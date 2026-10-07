@@ -6,6 +6,7 @@ import requests
 from bs4 import BeautifulSoup
 import streamlit as st
 import urllib3
+
 @st.cache_data(ttl=300)
 def fetch_warrants(stock_code):
 
