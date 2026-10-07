@@ -1,15 +1,28 @@
-df, status_code, raw_preview, update_time, source_used = fetch_warrants(stock_code)
+@st.cache_data(ttl=300)
+def fetch_warrants(stock_code):
 
-if df is not None:
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Referer": "https://www.cmoney.tw/"
+    }
 
-    st.write("資料筆數")
-    st.write(len(df))
+    try:
+        url = f"https://www.cmoney.tw/finance/warrantsbystock.aspx?stock={stock_code}"
 
-    st.write("欄位名稱")
-    st.write(df.columns.tolist())
+        resp = requests.get(
+            url,
+            headers=headers,
+            timeout=20
+        )
 
-    st.write("前20筆資料")
-    st.dataframe(df.head(20))
+        resp.encoding = "utf-8"
 
-else:
-    st.error("抓取失敗")
+        tables = pd.read_html(
+            StringIO(resp.text)
+        )
+
+        return tables, resp.status_code
+
+    except Exception as e:
+
+        return str(e), None
